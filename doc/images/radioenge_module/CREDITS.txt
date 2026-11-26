@@ -1,0 +1,2 @@
+Imagens do projeto Radioenge-Module (https://github.com/ricaun/Radioenge-Module),
+de Luiz Henrique Cassettari (ricaun / loranow.com), licença MIT (arquivo LICENSE ao lado).

@@ -1,0 +1,1891 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LoRaWAN Node Radioenge Atuadores e Sensores</title>
+<meta name="description" content="Configuração e status do nó LoRaWAN Radioenge com relés e medidores PZEM-004T (STM32L071CZ + SX1272, ABP e OTAA) pelo navegador, via USB-serial (Web Serial) ou Bluetooth BLE (Web Bluetooth).">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b7a5f'/%3E%3Cpath d='M16 17v9M12 26h8' stroke='%23fff' stroke-width='2.2' stroke-linecap='round'/%3E%3Ccircle cx='16' cy='14' r='2.4' fill='%23fff'/%3E%3Cpath d='M10.5 8.5a8 8 0 0 0 0 11M21.5 8.5a8 8 0 0 1 0 11' stroke='%23fff' stroke-width='2.2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<!--
+  Página WEB do nó LoRaWAN Radioenge com atuadores (relés) e sensores (PZEM-004T v3),
+  ABP e OTAA num firmware só (a ativação é trocada por AT+NJM, na seção Ativação).
+  Um arquivo só, sem dependências e
+  sem servidor: o navegador conversa direto com o console do firmware.
+    - USB-serial: Web Serial API (Chrome, Edge, Opera ou Firefox 151+ no computador)
+    - Bluetooth BLE: Web Bluetooth (Nordic UART Service ou HM-10 FFE0/FFE1)
+  Protocolo (o mesmo do app Android): "mode app" -> sem eco/prompt; cada comando termina em
+  "@OK", "@OK restart" ou "@ERR <motivo>"; info -> "@I {json}", jstatus -> "@S {json}",
+  jconfig -> "@C {json}", jkeys -> "@K {json}", jdiag -> "@D {json}" (autoteste),
+  jlog <de> -> linhas "@L <texto>" + "@LN {json}" (log guardado em RAM no nó),
+  jio -> "@IO {json}" (GPIOs, bateria AT+BAT, serial transparente, PZEM e pinos de relé),
+  jdev -> "@DV {json}" (relés, medidores PZEM-004T e protocolo ADAILSILVA_V1). Os comandos AT da
+  Radioenge (AT+GPIOC, AT+WPIN, AT+SENDB, AT+TXBCFM...) e os de relés/PZEM (AT+RELECFG,
+  AT+RELE, AT+RELEPULSO, AT+PZEMCFG...) também terminam em "@OK"/"@ERR",
+  com a resposta original ("AT OK", "AT PARAM ERROR"...) numa linha antes.
+  As outras linhas (eventos) vão para os Logs.
+  Disposição: Configuração (menu lateral) e, no topo,
+  Logs, Diagnósticos e Classes. Ping, Traceroute e Nslookup rodam no computador: com o
+  servidor local (sh scripts/build.sh web -> scripts/web_server.py, GET /diag_run) usam
+  os programas do sistema; sem ele (GitHub Pages), Nslookup por DNS-over-HTTPS e Ping
+  por HTTPS. O Autoteste do nó roda no firmware (comando jdiag).
+  Precisa de contexto seguro: https:// (GitHub Pages) ou http://localhost (sh scripts/build.sh web).
+-->
+<style>
+:root{--rx:#2f6fd0;--bg:#f2f4f6;--sf:#fff;--sf2:#f7f9fa;--fg:#17202a;--mut:#5d6b78;--line:#dde3e8;--acc:#0b7a5f;--acc2:#e1f1eb;--on:#fff;--ok:#1f9d55;--warn:#c27803;--err:#c0362c;--errbg:#fbecea;--hd:#0e2a24;--term:#0f1513;--termfg:#cfe3da;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color-scheme:light}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--rx:#6aa5ff;--bg:#0f151b;--sf:#151d25;--sf2:#1a232c;--fg:#e3e9ee;--mut:#8b98a5;--line:#26313c;--acc:#35b98f;--acc2:#16302a;--on:#07211a;--ok:#3fbf7f;--warn:#e3a33b;--err:#f07a6e;--errbg:#3a1f1d;--hd:#0b1116;--term:#0a0f0d;color-scheme:dark}}
+:root[data-theme="dark"]{--rx:#6aa5ff;--bg:#0f151b;--sf:#151d25;--sf2:#1a232c;--fg:#e3e9ee;--mut:#8b98a5;--line:#26313c;--acc:#35b98f;--acc2:#16302a;--on:#07211a;--ok:#3fbf7f;--warn:#e3a33b;--err:#f07a6e;--errbg:#3a1f1d;--hd:#0b1116;--term:#0a0f0d;color-scheme:dark}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:76px}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{transition:none!important}}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--acc)}
+.m,code{font-family:var(--mono);font-size:.92em}
+.top{position:sticky;top:0;z-index:5;background:var(--hd);color:#e8f1ee;border-bottom:1px solid rgba(255,255,255,.06)}
+.top>div{display:flex;align-items:center;gap:12px 20px;flex-wrap:wrap;padding:10px 24px;max-width:1440px;margin:0 auto}
+.brand{display:flex;align-items:center;gap:10px;margin-right:auto;min-width:0}
+.brand svg{width:28px;height:28px;flex:none}
+.brand h1{font-size:16px;font-weight:650;margin:0;white-space:nowrap;letter-spacing:.1px}
+.brand h1 small{font-weight:500;opacity:.7;margin-left:6px;font-size:12.5px}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:7px;padding:4px 10px;border-radius:999px;background:rgba(255,255,255,.07);font-size:12.5px;white-space:nowrap}
+.chip b{font-weight:600;color:#fff}
+.chip button.cc{all:unset;cursor:pointer;margin-left:2px;padding:0 3px;border-radius:4px;font-size:13px;line-height:1;opacity:.75}
+.chip button.cc:hover,.chip button.cc:focus-visible{opacity:1;background:rgba(255,255,255,.14)}
+.chip i{width:8px;height:8px;border-radius:50%;background:#7b8794}
+.chip i.ok{background:#3fbf7f;box-shadow:0 0 0 3px rgba(63,191,127,.22)}.chip i.warn{background:#e3a33b}.chip i.err{background:#f07a6e}
+.top button{min-height:32px;font-size:13px;background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.14);color:#e8f1ee}
+.top button:hover{background:rgba(255,255,255,.14);border-color:rgba(255,255,255,.24)}
+.wrap{max-width:1440px;margin:0 auto;padding:0 24px;display:grid;grid-template-columns:210px minmax(0,1fr);gap:40px}
+.wrap.solo{grid-template-columns:minmax(0,1fr);max-width:1040px}
+.wrap.view{max-width:1200px}
+.tr{display:flex;gap:8px 12px;align-items:center;flex-wrap:wrap;margin-left:auto}
+.nav{display:flex;gap:2px;align-items:center;flex-wrap:wrap}
+@media(max-width:1500px){.brand h1 small{display:none}}
+#vcls .tbl th{white-space:nowrap}
+@media(max-width:700px){#vdiag .lbar input,#vlogs .lbar input[type=text]{flex-basis:100%}.lbar button{flex:1;padding:6px 8px}.vst{margin-left:0}}
+.nav a{color:#e8f1ee;text-decoration:none;font-size:14px;padding:6px 10px;border-radius:7px;white-space:nowrap}
+.nav a:hover{background:rgba(255,255,255,.08)}
+.nav a.on{background:rgba(255,255,255,.14);font-weight:600}
+.vw{padding:24px 0 0;display:flex;flex-direction:column;gap:12px;min-width:0}
+.vh h2{margin:0;font-size:22px;font-weight:650;letter-spacing:-.2px}
+.vh p{margin:4px 0 0;color:var(--mut);font-size:14px;max-width:900px}
+.lbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.lbar input[type=text]{flex:1;min-width:180px;width:auto}
+.lbar button.t{border-color:var(--acc);font-weight:650}
+.chk{display:flex;gap:6px;align-items:center;font-size:13.5px;color:var(--mut);white-space:nowrap}
+.chk input{accent-color:var(--acc);width:16px;height:16px;margin:0}
+.vst{margin-left:auto;font-size:12.5px;color:var(--mut)}
+.dh2{display:flex;gap:10px;flex-wrap:wrap;margin:0}
+.term.big{height:calc(100vh - 300px);min-height:320px;margin:0}
+pre.term{margin:0}
+#vcls .intro2{margin:0;color:var(--mut)}#vcls .intro2 b{color:var(--fg)}
+#vcls .cg{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+#vcls .cc{background:var(--sf);border:1px solid var(--line);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column}
+#vcls .cc h3{font-size:16px;margin:0 0 6px}#vcls .cc p{margin:6px 0}
+#vcls .clh{display:flex;align-items:center;gap:10px;margin-bottom:6px}
+#vcls .clh b{display:grid;place-items:center;width:38px;height:38px;border-radius:10px;background:var(--acc);color:var(--on);font-size:20px;flex:none}
+#vcls .clh span{font-weight:600}#vcls .clh small{display:block;color:var(--mut);font-weight:400;font-size:12.5px}
+#vcls dl{margin:6px 0 0;display:grid;grid-template-columns:auto 1fr;gap:3px 10px;font-size:13.5px}#vcls dt{color:var(--mut)}#vcls dd{margin:0}
+#vcls .ex{margin-top:auto;padding-top:8px;font-size:13px;color:var(--mut)}#vcls .ex b{color:var(--fg);font-weight:600}
+#vcls .tl{height:16px;background:repeating-linear-gradient(90deg,var(--line) 0 2px,transparent 2px 6px);border:0}
+#vcls .lg{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--mut)}
+#vcls .lg span:before{content:'';display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px;background:var(--c)}
+#vcls .dev{border-color:var(--acc);border-width:2px}#vcls .dev h3{color:var(--acc)}
+#vcls .note{font-size:13px;color:var(--mut);margin:6px 0 0}
+#vcls .k{font:12.5px var(--mono);background:var(--sf2);border:1px solid var(--line);border-radius:4px;padding:0 4px}
+#vcls ol{margin:6px 0;padding-left:20px}#vcls li{margin:4px 0}
+#vcls .tbl td:first-child{font-weight:400;color:var(--mut)}#vcls .tbl td.c{font-weight:700;color:var(--fg)}
+.side{position:sticky;top:76px;align-self:start;padding-top:28px}
+.side a{display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;color:var(--mut);text-decoration:none;font-size:14px;border-left:2px solid transparent}
+.side a:hover{color:var(--fg);background:var(--sf)}
+.side a.on{color:var(--fg);background:var(--sf);border-left-color:var(--acc);font-weight:600}
+.side svg{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+main{padding:28px 0 0;min-width:0;display:flex;flex-direction:column;gap:16px}
+.intro h2{margin:0;font-size:24px;font-weight:650;letter-spacing:-.2px}
+.intro p{margin:4px 0 0;color:var(--mut);font-size:14px;max-width:760px}
+.sec{background:var(--sf);border:1px solid var(--line);border-radius:12px;display:grid;grid-template-columns:260px minmax(0,1fr);min-width:0}
+.sec>header{padding:22px 24px;border-right:1px solid var(--line)}
+.sec>header h3{margin:0 0 6px;font-size:16px;font-weight:650}
+.sec>header p{margin:0;color:var(--mut);font-size:13.5px;line-height:1.45}
+.tag{display:inline-block;margin-top:10px;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:999px;border:1px solid var(--line);color:var(--mut)}
+.tag.now{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 45%,transparent)}
+.tag.rb{color:var(--warn);border-color:color-mix(in srgb,var(--warn) 45%,transparent)}
+.fl{padding:20px 24px 24px;min-width:0;max-width:860px}
+.f{margin-top:16px}.f:first-child{margin-top:0}
+label.l,.lb{display:block;font-size:13px;font-weight:550;color:var(--fg);margin:0 0 6px}
+input[type=text],input[type=number],select{width:100%;height:40px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--sf2);color:var(--fg);font:inherit;transition:border-color .15s,box-shadow .15s}
+select{padding:0 8px;cursor:pointer}
+input.m,select.m{font-family:var(--mono);font-size:14px}
+input:hover,select:hover{border-color:color-mix(in srgb,var(--mut) 45%,var(--line))}
+input:focus,select:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 22%,transparent)}
+input::placeholder{color:color-mix(in srgb,var(--mut) 75%,transparent)}
+input:disabled{opacity:.55}
+input.bad{border-color:var(--err)}
+button:focus-visible,a:focus-visible,.seg input:focus-visible+span,.opt input:focus-visible,.sw input:focus-visible+span{outline:2px solid var(--acc);outline-offset:2px}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+.g2>.f,.g3>.f{margin-top:0}.g2,.g3{margin-top:16px}.g2:first-child,.g3:first-child{margin-top:0}
+.hint{font-size:12.5px;color:var(--mut);margin:6px 0 0;line-height:1.45}
+.hint b{color:var(--fg);font-weight:600}
+hr{border:0;border-top:1px solid var(--line);margin:22px 0 18px}
+.seg{display:inline-flex;padding:3px;gap:3px;border-radius:9px;background:var(--sf2);border:1px solid var(--line);max-width:100%;flex-wrap:wrap}
+.seg label{position:relative;cursor:pointer}
+.seg input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.seg span{display:block;padding:6px 14px;border-radius:7px;font-size:13.5px;font-weight:550;color:var(--mut);white-space:nowrap;transition:background .15s,color .15s}
+.seg input:checked+span{background:var(--sf);color:var(--fg);box-shadow:0 1px 2px rgba(0,0,0,.12),0 0 0 1px var(--line)}
+.seg label:hover span{color:var(--fg)}
+.sws{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sw{display:flex;gap:11px;align-items:flex-start;border:1px solid var(--line);border-radius:10px;padding:11px 13px;cursor:pointer;background:var(--sf);position:relative}
+.sw:has(input:checked){border-color:var(--acc);background:var(--acc2)}
+.sw input{margin:3px 0 0;accent-color:var(--acc);flex:none;width:16px;height:16px}
+.sw b{font-weight:600;font-size:14px;display:block}
+.sw small{display:block;color:var(--mut);font-size:12.5px;margin-top:1px}
+button{font:inherit;font-size:14px;font-weight:550;line-height:1.25;border-radius:8px;min-height:40px;padding:6px 16px;cursor:pointer;border:1px solid var(--line);background:var(--sf);color:var(--fg);display:inline-flex;align-items:center;gap:8px;justify-content:center;text-align:center}
+button:hover{border-color:color-mix(in srgb,var(--mut) 50%,var(--line))}
+button.s{min-height:34px;padding:5px 12px;font-size:13px}
+button:disabled{opacity:.5;cursor:default}
+button svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.pri{background:var(--acc);border-color:var(--acc);color:var(--on);min-width:150px}
+.pri:hover{filter:brightness(1.07);border-color:var(--acc)}
+.sk{margin-top:16px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--sf2)}
+.skh{display:flex;gap:12px;align-items:flex-start;justify-content:space-between}
+.skh b{display:block;font-size:14px;font-weight:600}.skh small{display:block;font-size:12px;color:var(--mut);line-height:1.35;margin-top:1px}
+.skr{display:grid;grid-template-columns:76px minmax(0,1fr) auto;gap:10px;align-items:center;margin-top:8px}
+.skr span{font-size:12px;color:var(--mut)}
+.skr code{font:600 14.5px/1.4 var(--mono);letter-spacing:.02em;overflow-wrap:anywhere;user-select:all}
+@media(max-width:560px){.skr{grid-template-columns:minmax(0,1fr) auto;gap:4px 10px}.skr span{grid-row:1}.skr button{grid-row:1;grid-column:2}.skr code{grid-row:2;grid-column:1/-1;font-size:13px;letter-spacing:0}}
+.amsg{color:var(--mut);font-size:13px;align-self:center}
+.dng{color:var(--err);border-color:color-mix(in srgb,var(--err) 45%,var(--line))}
+.st{padding:10px 12px;border-radius:9px;background:var(--sf2);font-size:13.5px;border:1px solid var(--line);border-left:3px solid var(--mut);margin:0 0 16px;overflow-wrap:anywhere}
+.st.ok{border-left-color:var(--ok)}.st.warn{border-left-color:var(--warn)}.st.err{border-left-color:var(--err);background:var(--errbg)}
+.kv{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.kv>div{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--sf2);min-width:0}
+.kv span{display:block;font-size:12px;color:var(--mut)}
+.kv b{display:block;font:600 18px/1.35 var(--mono);font-variant-numeric:tabular-nums;margin:2px 0 1px;overflow-wrap:anywhere}
+.kv small{display:block;font-size:12px;color:var(--mut);line-height:1.35;overflow-wrap:anywhere}
+.kv.w b{font-size:14.5px}
+.k4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.kg{margin-top:16px}
+.kgl{display:block;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--mut);margin:0 0 6px}
+@media(max-width:760px){.k4{grid-template-columns:1fr 1fr}}
+.acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;align-items:center}
+.acts:first-child{margin-top:0}
+.conn{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.card{border:1px solid var(--line);border-radius:12px;padding:20px;background:var(--sf);display:flex;flex-direction:column;gap:10px}
+.card h3{margin:0;font-size:16px;font-weight:650;display:flex;align-items:center;gap:9px}
+.card h3 svg{width:20px;height:20px;stroke:var(--acc);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.card p{margin:0;color:var(--mut);font-size:13.5px}
+.card .row{display:flex;gap:8px;align-items:center;margin-top:auto;padding-top:6px}
+.card .row select{width:auto;flex:none}
+.wire{width:100%;border-collapse:collapse;font-size:13px}
+.wire td{padding:5px 8px;border-top:1px solid var(--line)}
+.wire td:first-child{color:var(--mut);width:46%}
+.term{background:var(--term);color:var(--termfg);border-radius:10px;padding:10px 12px;font:12.5px/1.45 var(--mono);height:420px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+.term .e{color:#ff8a7a}.term .w{color:#ffd166}.term .o{color:#7fd4b0}.term .i{color:#8ec5ff}.term .u{color:#9aa7a2}
+.cin{display:flex;gap:8px;margin-top:10px}
+.pw{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.pw input{flex:1 1 0;min-width:0}
+@media(max-width:560px){.pw input{flex-basis:100%}}
+.cin input{flex:1}
+.tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+.tbl th,.tbl td{text-align:left;padding:8px 10px;border-top:1px solid var(--line);vertical-align:top;overflow-wrap:anywhere;hyphens:auto}
+.tbl th{font-weight:600;color:var(--mut);font-size:12.5px;border-top:0}
+.tbl td:first-child{font-weight:600}
+.tl{display:flex;height:14px;border-radius:4px;overflow:hidden;margin:6px 0 2px;background:var(--sf2);border:1px solid var(--line)}
+.tl i{display:block}.tl .t{background:var(--acc)}.tl .r{background:var(--rx)}.tl .b{background:var(--warn)}.tl .g{background:transparent}
+.cls{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+.cls>div{border:1px solid var(--line);border-radius:10px;padding:12px;background:var(--sf2)}
+.cls h4{margin:0;font-size:15px}.cls h4 span{color:var(--acc);font-family:var(--mono);margin-right:6px}
+.cls p{margin:4px 0 0;font-size:12.5px;color:var(--mut)}
+.bar{position:sticky;bottom:0;z-index:4;margin:0;padding:14px 24px;display:flex;gap:12px;align-items:center;justify-content:flex-end;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(8px);border-top:1px solid var(--line)}
+#vnode .fl{container-type:inline-size}
+/* linhas de 3 campos: 2 ou 1 coluna quando a seção fica estreita (nenhuma opção cortada) */
+@container (max-width:800px){.g3{grid-template-columns:1fr 1fr}.g3>.f[style*="span 2"]{grid-column:1/-1!important}}
+@container (max-width:540px){.g2,.g3{grid-template-columns:1fr}.g3>.f{grid-column:auto!important}}
+.gp{display:grid;grid-template-columns:110px minmax(270px,1.6fr) minmax(112px,.8fr) auto minmax(130px,1fr);gap:8px 10px;align-items:center;margin-top:16px}
+.gp>.h{font-size:12px;color:var(--mut);font-weight:600}
+.gp .pn b{display:block;font-size:14px}.gp .pn small{display:block;font-size:11.5px;color:var(--mut);font-family:var(--mono)}
+.gp select{height:36px}.gp button{min-height:36px}
+.gp .rw{display:contents}.gp .rw.chg select{border-color:var(--warn)}
+.gv{display:flex;gap:8px;align-items:center;font:600 14px var(--mono);min-width:0}
+.gv small{font:12px system-ui,sans-serif;color:var(--mut);font-weight:400}
+.lv{display:inline-block;width:11px;height:11px;border-radius:50%;background:var(--line);flex:none}.lv.on{background:var(--ok);box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 25%,transparent)}
+.ab{flex:1;min-width:40px;height:6px;background:var(--sf2);border:1px solid var(--line);border-radius:4px;overflow:hidden}.ab i{display:block;height:100%;background:var(--acc)}
+.gv .seg span{padding:3px 10px}
+@container (max-width:760px){.gp{grid-template-columns:minmax(0,1fr) auto}.gp>.h{display:none}.gp .pn{grid-column:1/-1;margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}.gp select[id^=gm],.gp .gv{grid-column:1/-1}}
+.rl{display:flex;flex-direction:column;gap:8px}
+.rr{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px 12px;background:var(--sf2)}
+.rr .rn{flex:1 1 170px;min-width:0}.rr .rn b{display:flex;align-items:center;gap:8px;font-size:14px}.rr .rn small{display:block;font-size:12px;color:var(--mut)}
+.rr .pu{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.rr .pu input{width:130px;height:34px}
+.rr .seg span{padding:3px 12px}
+.rc{display:flex;flex-direction:column;gap:8px}
+.rcr{display:grid;grid-template-columns:64px minmax(0,1fr) minmax(0,1fr) auto;gap:8px;align-items:center}
+.rcr>span{font-size:13px;font-weight:600}.rcr select{height:36px}.rcr button{min-height:36px}
+@container (max-width:540px){.rcr{grid-template-columns:minmax(0,1fr) auto}.rcr>span{grid-column:1/-1}.rcr select[data-rk="0"]{grid-column:1/-1}}
+.pzh{font-size:13.5px;font-weight:600;margin:16px 0 8px}.pzh small{font-weight:400;color:var(--mut);margin-left:6px}
+.ports td{padding:5px 10px}.ports td:first-child{font-family:var(--mono);width:110px}
+.dirty{margin-right:auto;font-size:13.5px;color:var(--mut);display:flex;align-items:center;gap:8px}
+.dirty i{width:8px;height:8px;border-radius:50%;background:var(--line)}
+.bar.chg .dirty{color:var(--fg)}.bar.chg .dirty i{background:var(--warn)}
+#toast{position:fixed;left:50%;bottom:84px;transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:9px;font-size:13.5px;box-shadow:0 6px 24px rgba(0,0,0,.25);z-index:9;max-width:calc(100% - 32px);opacity:0;pointer-events:none;transition:opacity .2s}
+#toast.on{opacity:1}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--sf);color:var(--fg);padding:22px;max-width:440px;width:calc(100% - 32px)}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog h3{margin:0 0 8px;font-size:17px}
+dialog p{margin:0 0 14px;color:var(--mut);font-size:14px}
+dialog .acts{justify-content:flex-end}
+footer{max-width:1440px;margin:0 auto;padding:18px 24px 28px;text-align:center;color:var(--mut);font-size:12.5px}footer b{color:var(--fg);font-weight:600}footer a{color:inherit;text-decoration:none}footer a:hover b{text-decoration:underline}
+[data-m]>.g2:first-child{margin-top:16px}
+[hidden]{display:none!important}
+@media(max-width:1180px){.sec{grid-template-columns:1fr}.sec>header{border-right:0;border-bottom:1px solid var(--line);padding:16px 20px}.fl{padding:18px 20px 20px;max-width:none}}
+@media(max-width:900px){.wrap{grid-template-columns:1fr;gap:0;padding:0 16px}.side{position:static;padding:14px 0 0;display:flex;flex-wrap:wrap;gap:6px}.side a{white-space:nowrap;background:var(--sf);border:1px solid var(--line);padding:6px 11px;font-size:13px}.side a.on{border-color:var(--acc)}.side svg{display:none}
+main{padding-top:16px}.vw{padding-top:16px}.top{position:static}.tr{order:4;width:100%;margin-left:0}#vcls .cg{grid-template-columns:1fr}.term.big{height:60vh}.top{position:static}.top>div{padding:10px 16px}.chips{order:3;width:100%}.bar{padding:12px 16px}.intro h2{font-size:20px}html{scroll-padding-top:12px}.conn,.cls{grid-template-columns:1fr}}
+@media(max-width:560px){.tbl{font-size:12px}.tbl th,.tbl td{padding:6px 4px}.kv{grid-template-columns:1fr 1fr}.kv b{font-size:15px}.g2,.g3,.sws{grid-template-columns:1fr}.dirty span{display:none}.bar button{flex:1;padding:0 10px}.pri{min-width:0}.brand h1{font-size:15px;white-space:normal;line-height:1.25}.chip{font-size:12px;padding:3px 9px}.term{height:340px;font-size:12px}.tbl{font-size:12.5px}}
+</style>
+</head>
+<body>
+<div class="top"><div>
+<div class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#0b7a5f"/><path d="M16 17v9M12 26h8" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/><circle cx="16" cy="14" r="2.4" fill="#fff"/><path d="M10.5 8.5a8 8 0 0 0 0 11M21.5 8.5a8 8 0 0 1 0 11" stroke="#fff" stroke-width="2.2" fill="none" stroke-linecap="round"/></svg>
+<h1><span id="hn">LoRaWAN Node Radioenge Atuadores e Sensores</span><small id="hm">STM32L071CZ + SX1272</small></h1></div>
+<div class="chips" id="chips" hidden>
+<span class="chip" title="Ligação com o nó"><i id="cli" class="ok"></i><span id="clk">-</span></span>
+<span class="chip" title="Sessão LoRaWAN"><i id="cse"></i><span id="csl">-</span></span>
+<span class="chip"><span id="cidl">DevEUI</span> <b class="m" id="cid">-</b><button type="button" class="cc" id="ccid" data-ok="✓" title="Copiar" aria-label="Copiar">⧉</button></span>
+<span class="chip">Classe <b id="ccl">-</b></span>
+</div>
+<div class="tr"><nav class="nav" aria-label="Páginas">
+<a href="#cfg" id="ncfg" hidden>&larr; Configuração</a>
+<a href="#logs" data-v="logs">Logs</a>
+<a href="#diag" data-v="diag">Diagnósticos</a>
+<a href="#classes" data-v="cls">Classes</a>
+</nav>
+<button id="bdis" type="button" hidden>Desconectar</button></div>
+</div></div>
+
+<div class="wrap solo" id="wrap">
+<aside class="side" id="side" hidden>
+<a href="#sts"><svg viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>Status</a>
+<a href="#act"><svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>Ativação <span class="md">-</span></a>
+<a href="#radio"><svg viewBox="0 0 24 24"><path d="M12 13v8M8 21h8"/><circle cx="12" cy="10" r="2"/><path d="M7.5 5.5a6.5 6.5 0 0 0 0 9M16.5 5.5a6.5 6.5 0 0 1 0 9"/></svg>Rádio e classe</a>
+<a href="#upl"><svg viewBox="0 0 24 24"><path d="M12 20V5M6 11l6-6 6 6"/></svg>Uplink</a>
+<a href="#rst"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>Downlinks</a>
+<a href="#pwr"><svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>Energia e serial</a>
+<a href="#mnt"><svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M4 17v3h16v-3"/></svg>Manutenção</a>
+<a href="#gpio"><svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5"/><path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"/></svg>GPIOs</a>
+<a href="#dev"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10v4M11 10v4M15 12h3"/></svg>Relés e PZEM</a>
+<a href="#acts"><svg viewBox="0 0 24 24"><path d="M5 3l14 9-14 9z"/></svg>Ações</a>
+</aside>
+
+<main>
+<!-- ============================================================ conectar -->
+<div id="vconn">
+<div class="intro"><h2>Conectar ao nó</h2>
+<p>Esta página fala direto com o console do firmware (115200 8N1 de fábrica, pinos 2 e 3 do módulo; com <code>AT+BAUDRATE</code> pode ser 9600, 19200 ou 43000). Nada é instalado: escolha como o nó está ligado ao computador.</p></div>
+<div id="nosec" class="st err" hidden style="margin-top:16px"></div>
+<div class="conn" style="margin-top:16px">
+<div class="card">
+<h3><svg viewBox="0 0 24 24"><path d="M12 2v14M8 6l4-4 4 4"/><rect x="7" y="16" width="10" height="6" rx="1.5"/></svg>USB-serial</h3>
+<p>Adaptador USB-serial de 3,3 V (CP210x, CH340, FTDI, PL2303) ou a porta virtual de um ST-LINK/V2-1 ou V3. Usa o <b>Web Serial</b>: Chrome, Edge, Opera ou Firefox 151+ no computador.</p>
+<table class="wire"><tr><td>TX do adaptador</td><td>pino 2 (RX do módulo)</td></tr><tr><td>RX do adaptador</td><td>pino 3 (TX do módulo)</td></tr><tr><td>GND</td><td>GND</td></tr></table>
+<div class="row"><select id="baud" class="m" aria-label="Velocidade"><option>115200</option><option>43000</option><option>19200</option><option>9600</option></select>
+<button class="pri" id="bser" type="button">Conectar USB-serial</button></div>
+<label class="chk" style="margin-top:4px;white-space:normal"><input type="checkbox" id="sall">Listar todas as portas seriais (inclusive as ttyS da placa-mãe)</label>
+<p class="hint" id="nser" hidden>Este navegador não tem o Web Serial. Use o Chrome, o Edge, o Opera ou o Firefox 151+ no computador.</p>
+</div>
+<div class="card">
+<h3><svg viewBox="0 0 24 24"><path d="m7 7 10 10-5 5V2l5 5L7 17"/></svg>Bluetooth BLE</h3>
+<p>Módulo BLE-serial ligado ao console: <b>Nordic UART Service</b> ou <b>HM-10 / JDY-08 / CC254x</b> (FFE0/FFE1). Usa o <b>Web Bluetooth</b>: Chrome ou Edge no computador e no Android.</p>
+<table class="wire"><tr><td>TXD do módulo BLE</td><td>pino 2 (RX do módulo)</td></tr><tr><td>RXD do módulo BLE</td><td>pino 3 (TX do módulo)</td></tr><tr><td>VCC / GND</td><td>3V3 / GND</td></tr></table>
+<p class="hint">O módulo BLE precisa estar em 115200 (no HM-10: <code>AT+BAUD4</code>).</p>
+<div class="row"><button class="pri" id="bble" type="button">Conectar Bluetooth</button></div>
+<p class="hint" id="nble" hidden>Este navegador não tem o Web Bluetooth. Use o Chrome ou o Edge (no Linux, ative <code>chrome://flags/#enable-web-bluetooth</code> se precisar).</p>
+</div>
+</div>
+<div id="cerr" class="st err" hidden style="margin-top:16px"></div>
+<p class="hint" style="margin-top:16px">Mesma interface do app Android do repositório (<code>app_flutter/</code>). Feche o terminal serial (picocom, monitor) antes: no Linux os dois abrem a porta juntos e dividem os bytes, e nenhum funciona direito.</p>
+</div>
+
+<!-- ============================================================ conectado -->
+<div id="vnode" hidden style="display:contents">
+<section class="sec" id="sts"><header><h3>Status</h3><p>Funcionamento do nó desde que ligou. Atualiza a cada 5 s.</p></header>
+<div class="fl">
+<div id="gst" class="st">Carregando…</div>
+<div id="bw" class="st warn" hidden>Classe B sem cristal de 32,768 kHz: o relógio do módulo é o LSI calibrado e os ping slots podem ser perdidos.</div>
+<div class="kg"><span class="kgl">LoRaWAN</span><div class="kv k4" id="kvs"></div></div>
+<div class="kg"><span class="kgl">Tráfego</span><div class="kv k4" id="kvt"></div></div>
+<div class="kg"><span class="kgl">Módulo</span><div class="kv k4 w" id="kvm"></div></div>
+<div class="sk" id="sk" hidden>
+<div class="skh"><div><b>Chaves de sessão</b><small id="sk_s">-</small></div><button type="button" class="s" id="sk_b" title="Mostra ou oculta as chaves nesta tela">Mostrar</button></div>
+<div class="skr"><span>DevAddr</span><code id="sk_da">-</code><button type="button" class="s" data-k="da" title="Copia o DevAddr (hexadecimal, 4 bytes, como no ChirpStack)">Copiar</button></div>
+<div class="skr"><span>NwkSKey</span><code id="sk_nwk">-</code><button type="button" class="s" data-k="nwk" title="Copia a NwkSKey (hexadecimal, MSB, como no ChirpStack)">Copiar</button></div>
+<div class="skr"><span>AppSKey</span><code id="sk_app">-</code><button type="button" class="s" data-k="app" title="Copia a AppSKey (hexadecimal, MSB, como no ChirpStack)">Copiar</button></div>
+</div>
+<p class="hint" id="hdirty" hidden>Há alterações feitas pelo console sem <code>save</code>.</p>
+<div class="acts">
+<button type="button" class="s" id="bsnow" title="Agenda um uplink agora com o payload configurado">Enviar agora</button>
+<button type="button" class="s" id="bsjoin">Refazer JOIN</button>
+<span class="amsg" id="amsg"></span>
+</div>
+</div></section>
+
+<section class="sec" id="act"><header><h3>Ativação <span class="md">-</span></h3><p id="actp">Credenciais LoRaWAN. Mudar qualquer uma reinicia a sessão.</p><span class="tag rb">reinicia a sessão</span></header>
+<div class="fl">
+<div class="f"><span class="lb">Ativação (<code>AT+NJM</code>)</span>
+<div class="seg"><label><input type="radio" name="f_njm" value="abp" data-f><span>ABP</span></label><label><input type="radio" name="f_njm" value="otaa" data-f><span>OTAA</span></label></div>
+<p class="hint" id="njmh">Troca ABP ↔ OTAA sem regravar o firmware. Ao salvar, o nó reinicia com a outra ativação.</p></div>
+<div class="f"><span class="lb">DevEUI</span>
+<div class="seg"><label><input type="radio" name="euim" value="auto" data-f><span>Automático (ID do STM32)</span></label><label><input type="radio" name="euim" value="fix" data-f><span>Fixo</span></label></div>
+<div class="pw" style="margin-top:8px"><input type="text" class="m" id="f_deveui" maxlength="23" data-f aria-label="DevEUI"><button type="button" class="s" data-cp="deveui" data-cpn="o DevEUI" title="Copia o DevEUI (hexadecimal, sem espaços, como no ChirpStack)">Copiar</button></div>
+<p class="hint">16 dígitos hexadecimais. Cadastre este DevEUI no ChirpStack.</p></div>
+<div data-m="otaa">
+<div class="g2"><div class="f"><label class="l" for="f_joineui">JoinEUI (AppEUI)</label><div class="pw"><input type="text" class="m" id="f_joineui" maxlength="23" data-f><button type="button" class="s" data-cp="joineui" data-cpn="o JoinEUI" title="Copia o JoinEUI (hexadecimal, sem espaços, como no ChirpStack)">Copiar</button></div></div><div></div></div>
+<div class="f"><label class="l" for="f_appkey">AppKey</label><div class="pw"><input type="text" class="m" id="f_appkey" maxlength="47" data-f><button type="button" class="s" data-cp="appkey" data-cpn="a AppKey" title="Copia a AppKey (hexadecimal, sem espaços, como no ChirpStack)">Copiar</button></div></div>
+<div class="f"><label class="l" for="f_nwkkey">NwkKey</label><div class="pw"><input type="text" class="m" id="f_nwkkey" maxlength="47" data-f><button type="button" class="s" data-cp="nwkkey" data-cpn="a NwkKey" title="Copia a NwkKey (hexadecimal, sem espaços, como no ChirpStack)">Copiar</button></div><p class="hint">Só no LoRaWAN 1.1. No 1.0.x deixe igual à AppKey.</p></div>
+<div class="sws" style="margin-top:16px"><label class="sw"><input type="checkbox" id="f_ajoin" data-f><div><b>JOIN automático no boot</b><small><code>AT+AJOIN</code> · desligado, o JOIN só acontece com <code>AT+JOIN</code> ou Refazer JOIN</small></div></label></div>
+</div>
+<div data-m="abp">
+<div class="g2"><div class="f"><label class="l" for="f_devaddr">DevAddr</label><div class="pw"><input type="text" class="m" id="f_devaddr" maxlength="11" data-f><button type="button" class="s" data-cp="devaddr" data-cpn="o DevAddr" title="Copia o DevAddr (hexadecimal, sem espaços, como no ChirpStack)">Copiar</button></div></div><div class="f"><label class="l" for="f_netid">NetID</label><div class="pw"><input type="text" class="m" id="f_netid" maxlength="8" data-f><button type="button" class="s" data-cp="netid" data-cpn="o NetID" title="Copia o NetID (hexadecimal, sem espaços, como no ChirpStack)">Copiar</button></div></div></div>
+<div class="f"><label class="l" for="f_nwkskey">NwkSKey</label><div class="pw"><input type="text" class="m" id="f_nwkskey" maxlength="47" data-f><button type="button" class="s" data-cp="nwkskey" data-cpn="a NwkSKey" title="Copia a NwkSKey (hexadecimal, sem espaços, como no ChirpStack)">Copiar</button></div><p class="hint">Vale para as três chaves de rede do LoRaWAN 1.0.x.</p></div>
+<div class="f"><label class="l" for="f_appskey">AppSKey</label><div class="pw"><input type="text" class="m" id="f_appskey" maxlength="47" data-f><button type="button" class="s" data-cp="appskey" data-cpn="a AppSKey" title="Copia a AppSKey (hexadecimal, sem espaços, como no ChirpStack)">Copiar</button></div></div>
+</div>
+</div></section>
+
+<section class="sec" id="radio"><header><h3>Rádio e classe</h3><p>Canais AU915, data rate, potência e classe LoRaWAN. Use a mesma sub-banda do gateway.</p><span class="tag rb">sub-banda e canal de 500 kHz reiniciam a sessão</span></header>
+<div class="fl">
+<div class="g3">
+<div class="f"><label class="l" for="f_subband">Sub-banda</label><select id="f_subband" data-f></select></div>
+<div class="f"><label class="l" for="f_dr">Data rate</label><select id="f_dr" data-f></select></div>
+<div class="f"><label class="l" for="f_txpower">Potência (dBm)</label><input type="number" id="f_txpower" min="2" max="20" data-f></div>
+</div>
+<div class="g3">
+<div class="f"><label class="l" for="f_txp">Potência por índice (<code>AT+TXP</code>)</label><select id="f_txp" data-f></select></div>
+<div class="f" style="grid-column:span 2"><label class="l" for="f_chmask">Máscara de canais (<code>AT+CHMASK</code>)</label><div class="pw"><input type="text" class="m" id="f_chmask" maxlength="29" data-f><button type="button" class="s" data-cp="chmask" data-cpn="a máscara de canais" title="Copia a máscara (24 dígitos hexadecimais, como no AT+CHMASK)">Copiar</button></div></div>
+</div>
+<p class="hint" id="chmh"></p>
+<div class="sws" style="margin-top:16px">
+<label class="sw"><input type="checkbox" id="f_ch500" data-f><div><b>Canal de 500 kHz</b><small>o canal 64+n da sub-banda</small></div></label>
+<label class="sw"><input type="checkbox" id="f_adr" data-f><div><b>ADR</b><small>o servidor ajusta DR e potência</small></div></label>
+</div>
+<p class="hint">AU915 com dwell time de 400 ms: DR0 e DR1 não são permitidos e o DR2 leva só 11 bytes. Acima de 17 dBm o SX1272 usa o modo +20 dBm, limitado a ~1 % do tempo. Com <b>Máscara personalizada</b> na sub-banda, edite a máscara (6 palavras de 16 bits: canais 0–15, 16–31, 32–47, 48–63, 64–71 de 500 kHz, e a última sempre 0000).</p>
+<hr>
+<div class="f"><span class="lb">Classe</span>
+<div class="seg"><label><input type="radio" name="f_class" value="A" data-f><span>Classe A</span></label><label><input type="radio" name="f_class" value="B" data-f><span>Classe B</span></label><label><input type="radio" name="f_class" value="C" data-f><span>Classe C</span></label></div>
+<p class="hint">O formulário mostra a classe gravada no nó (lida com <code>jconfig</code>) e se refaz sozinho quando ela muda no nó (Ações, downlink de comando, AT). Para trocar sem salvar o resto, use <a href="#acts">Ações</a>.</p>
+<p class="hint"><b>ChirpStack:</b> ele não pergunta a classe ao nó. No LoRaWAN 1.0.x, a cada JOIN ele usa a do perfil do dispositivo: perfil com <b>Class-C</b> marcada vira <code>deviceClassEnabled: CLASS_C</code> e os downlinks saem na hora, mesmo com o nó em A (e se perdem). Deixe o perfil igual à classe daqui e refaça o JOIN.</p></div>
+<div class="g2"><div class="f"><label class="l" for="f_ping">Ping slot (Classe B)</label><select id="f_ping" data-f></select></div><div></div></div>
+<hr>
+<span class="lb">Janelas de recepção e rede</span>
+<div class="g3">
+<div class="f"><label class="l" for="f_rx1dl">Atraso da RX1 (ms) · <code>RX1DL</code></label><input type="number" id="f_rx1dl" min="1000" max="15000" step="1000" data-f></div>
+<div class="f"><label class="l" for="f_rx2dl">Atraso da RX2 (ms) · <code>RX2DL</code></label><input type="number" id="f_rx2dl" min="1000" max="16000" step="1000" data-f></div>
+<div class="f"><label class="l" for="f_rx2fq">Frequência da RX2 · <code>RX2FQ</code></label><select id="f_rx2fq" data-f></select></div>
+</div>
+<div class="g3">
+<div class="f"><label class="l" for="f_rx2dr">Data rate da RX2 · <code>RX2DR</code></label><select id="f_rx2dr" data-f></select></div>
+<div class="f"><label class="l" for="f_jn1dl">JOIN, janela 1 (ms) · <code>JN1DL</code></label><input type="number" id="f_jn1dl" min="1000" max="15000" step="1000" data-f></div>
+<div class="f"><label class="l" for="f_jn2dl">JOIN, janela 2 (ms) · <code>JN2DL</code></label><input type="number" id="f_jn2dl" min="1000" max="16000" step="1000" data-f></div>
+</div>
+<div class="sws" style="margin-top:16px">
+<label class="sw"><input type="checkbox" id="f_pnm" data-f><div><b>Rede pública</b><small><code>AT+PNM</code> · sync word 0x34; desligado: rede privada (0x12)</small></div></label>
+<label class="sw"><input type="checkbox" id="f_dcs" data-f><div><b>Duty cycle</b><small><code>AT+DCS</code> · limite de ocupação do canal (ETSI); o AU915 não exige</small></div></label>
+</div>
+<p class="hint">Padrão do ChirpStack e da TTN: RX1 1000 ms, RX2 2000 ms, JOIN 5000/6000 ms, RX2 em 923,3 MHz DR8. Everynet: RX1 5000 ms e RX2 6000 ms. No OTAA o Join-accept define os atrasos da sessão. Valem na hora ao salvar.</p>
+</div></section>
+
+<section class="sec" id="upl"><header><h3>Uplink</h3><p>O que o nó envia e com que frequência.</p><span class="tag now">aplica na hora</span></header>
+<div class="fl">
+<div class="f" id="umw"><span class="lb">Conteúdo do uplink periódico · <code>AT+TELEM</code></span>
+<div class="seg"><label><input type="radio" name="umode" value="1" data-f><span>Telemetria ADAILSILVA_V1</span></label><label><input type="radio" name="umode" value="0" data-f><span>Payload fixo</span></label></div>
+<p class="hint" id="umh">Telemetria: relés, PZEM, alimentação e motivo do boot em blocos TLV na <b>porta 20</b> (o payload e a FPort abaixo ficam sem uso). Com PZEM use <b>DR3 ou maior</b>: um bloco PZEM tem 21 bytes e não cabe em DR2.</p></div>
+<hr id="umhr">
+<div class="g3">
+<div class="f"><label class="l" for="f_interval">Intervalo (s)</label><input type="number" id="f_interval" min="5" max="86400" data-f></div>
+<div class="f"><label class="l" for="f_port">FPort</label><input type="number" id="f_port" min="1" max="223" data-f></div>
+<div class="f"><span class="lb">&nbsp;</span><label class="sw" style="padding:9px 12px"><input type="checkbox" id="f_confirmed" data-f><div><b>Confirmado</b></div></label></div>
+</div>
+<div class="f"><span class="lb">Payload</span>
+<div class="seg"><label><input type="radio" name="plm" value="txt" data-f><span>Texto</span></label><label><input type="radio" name="plm" value="hex" data-f><span>Hexadecimal</span></label></div>
+<div class="pw" style="margin-top:8px"><input type="text" id="f_payload" data-f><button type="button" class="s" data-cp="payload" data-cpn="o payload" title="Copia o payload (hexadecimal, sem espaços, como no ChirpStack)">Copiar</button></div>
+<p class="hint" id="plh">Até 51 bytes.</p></div>
+<div class="g3"><div class="f"><label class="l" for="f_nbtrials">Tentativas · <code>NBTRIALS</code></label><input type="number" id="f_nbtrials" min="0" max="79" data-f></div><div class="f" style="grid-column:span 2"><span class="lb">&nbsp;</span><p class="hint" style="margin:0">Uplink confirmado: até 15 tentativas (LoRaWAN 1.0.4). No <code>AT+JOIN</code> vale o número todo (0 a 79).</p></div></div>
+<hr>
+<label class="sw"><input type="checkbox" id="f_kaen" data-f><div><b>Keepalive</b><small><code>AT+KEEPALIVE</code> · pacote de 16 bytes do firmware original (Tabela 9 do manual): bateria, RSSI, SNR, entradas e analógicas</small></div></label>
+<div class="g3">
+<div class="f"><label class="l" for="f_kaport">FPort do keepalive</label><input type="number" id="f_kaport" min="1" max="223" data-f></div>
+<div class="f"><label class="l" for="f_kaper">Período (s)</label><input type="number" id="f_kaper" min="5" max="86400" data-f></div>
+<div class="f"><span class="lb">&nbsp;</span><label class="sw" style="padding:9px 12px"><input type="checkbox" id="f_kacfm" data-f><div><b>Confirmado</b></div></label></div>
+</div>
+</div></section>
+
+<section class="sec" id="rst"><header><h3>Downlinks</h3><p>Reset remoto (o nó reinicia quando chega exatamente este conteúdo nesta FPort) e a FPort dos comandos de configuração.</p><span class="tag now">aplica na hora</span></header>
+<div class="fl">
+<label class="sw"><input type="checkbox" id="f_rst" data-f><div><b>Reset remoto</b><small>reinicia o STM32 ao receber o comando abaixo</small></div></label>
+<div class="g3">
+<div class="f"><label class="l" for="f_rstport">FPort do reset</label><input type="number" id="f_rstport" min="1" max="223" data-f></div>
+<div class="f"><label class="l" for="f_rstdelay">Espera (ms)</label><input type="number" id="f_rstdelay" min="0" max="60000" data-f></div>
+<div class="f"><label class="l" for="f_cmdport">FPort de comandos</label><input type="number" id="f_cmdport" min="0" max="223" data-f></div>
+</div>
+<div class="g3"><div class="f"><label class="l" for="f_atport">FPort dos comandos AT</label><input type="number" id="f_atport" min="0" max="223" data-f></div><div class="f" style="grid-column:span 2"><span class="lb">&nbsp;</span><p class="hint" style="margin:0">O downlink nesta porta é o texto do comando (<code>AT+WPIN=3:1</code>, vários separados por <code>;</code>); a resposta volta num uplink na mesma porta. 0 desliga.</p></div></div>
+<div class="f"><label class="l" for="f_rstcmd">Comando de reset (hex, 1 a 16 bytes)</label><div class="pw"><input type="text" class="m" id="f_rstcmd" maxlength="47" data-f><button type="button" class="s" data-cp="rstcmd" data-cpn="o comando de reset" title="Copia o comando de reset (hexadecimal, sem espaços, como no ChirpStack)">Copiar</button></div></div>
+<p class="hint">Comandos na FPort de comandos: <code>01 00/01/02</code> = Classe A/B/C, <code>03 nn</code> = ping slot. 0 desliga.</p>
+<table class="tbl ports" style="margin-top:12px"><tr><th>FPort</th><th>Uso</th></tr><tbody id="ptab"></tbody></table>
+</div></section>
+
+<section class="sec" id="pwr"><header><h3>Energia e serial</h3><p>Modo STOP entre eventos, indicação dos LEDs e velocidade da serial do console.</p><span class="tag now">aplica na hora</span></header>
+<div class="fl">
+<div class="f"><label class="l" for="f_lowpower">Baixo consumo</label><select id="f_lowpower" data-f>
+<option value="0">0 · sem STOP (depuração)</option><option value="1">1 · STOP, console sempre pronto</option><option value="2">2 · STOP econômico</option></select><p class="hint">No STOP econômico o 1º caractere que chega na serial só acorda o módulo.</p></div>
+<div class="sws" style="margin-top:16px">
+<label class="sw"><input type="checkbox" id="f_extpower" data-f><div><b>Alimentação externa</b><small>bateria = 0 no DevStatusAns</small></div></label>
+<label class="sw"><input type="checkbox" id="f_leds" data-f><div><b>LEDs</b><small>vermelho TX, verde RX, amarelo serial (como o original)</small></div></label>
+<label class="sw"><input type="checkbox" id="f_verbose" data-f><div><b>Diagnóstico de sessão</b><small>chaves, Frame raw, FCnt e MIC a cada envio, nos Logs</small></div></label>
+</div>
+<div class="g2"><div class="f"><label class="l" for="f_baud">Velocidade da serial · <code>AT+BAUDRATE</code></label><select id="f_baud" class="m" data-f><option value="115200">115200 (fábrica)</option><option value="43000">43000</option><option value="19200">19200</option><option value="9600">9600 (original)</option></select></div><div></div></div>
+<p class="hint">115200 é a velocidade de fábrica deste firmware; 9600, a do firmware original da Radioenge. Vale também para a serial transparente (GPIO0/GPIO1). Pela USB-serial a página reconecta sozinha na nova velocidade; com Bluetooth, o módulo BLE precisa ser configurado na mesma velocidade.</p>
+</div></section>
+
+<section class="sec" id="mnt"><header><h3>Manutenção</h3><p>Cópia de segurança da configuração e volta ao padrão de fábrica.</p></header>
+<div class="fl">
+<div class="acts" style="margin-top:0">
+<button type="button" class="s" id="bexp">Exportar configuração</button>
+<input type="file" id="impf" accept=".json,application/json" hidden>
+<button type="button" class="s" id="bimp">Importar…</button>
+<button type="button" class="s dng" id="bfac">Restaurar padrão de fábrica</button>
+</div>
+<p class="hint">A exportação gera um JSON com a configuração gravada no nó, inclusive as chaves LoRaWAN: guarde o arquivo com cuidado. Importar preenche o formulário; revise e clique em <b>Salvar no nó</b>. Os modos dos GPIOs vão no arquivo, mas são aplicados na seção <a href="#gpio">GPIOs</a>. O padrão de fábrica usa os valores do <code>node_build.h</code>, apaga a sessão LoRaWAN e reinicia o nó.</p>
+<p class="hint" id="fwv"></p>
+</div></section>
+
+<div class="bar" id="sbar"><div class="dirty"><i></i><span id="sbt">Sem alterações</span></div>
+<button type="button" id="bread" disabled title="Lê de novo a configuração gravada no nó (jconfig)">Ler do nó</button><button type="button" id="bdisc" disabled>Descartar</button><button type="button" class="pri" id="bsave" disabled>Salvar no nó</button></div>
+<div id="ferr" class="st err" hidden style="white-space:pre-line;margin:0"></div>
+<div id="fext" class="st warn" hidden style="margin:0">A configuração gravada no nó mudou por fora (downlink de comando, AT por downlink ou outro console) enquanto o formulário tinha alterações não salvas. Clique em <b>Ler do nó</b> para ver os valores reais (descarta as alterações) ou em <b>Salvar no nó</b> para gravar as suas por cima.</div>
+
+<section class="sec" id="gpio"><header><h3>GPIOs</h3><p>Os 10 pinos do módulo, com os modos do firmware original: entrada, saída, analógica, interrupção (uplink na porta 2) e serial transparente (porta 4). Atualiza a cada 5 s.</p><span class="tag now">aplica na hora e grava</span></header>
+<div class="fl">
+<div id="gst2" class="st">Carregando…</div>
+<div class="kv k4" id="kvio"></div>
+<div class="gp" id="gpl"><span class="h">Pino</span><span class="h">Modo · <code>AT+GPIOC</code></span><span class="h">Pull</span><span class="h"></span><span class="h">Valor · <code>AT+RPIN</code> / <code>AT+ADC</code></span></div>
+<p class="hint">Analógicas só em GPIO0, 1, 7 e 8; interrupção em GPIO2, 4, 5, 6 e 9 (GPIO2 e GPIO6 dividem a mesma linha: um por vez; GPIO1 fica com o rádio). A serial transparente usa GPIO0 (RX) e GPIO1 (TX) juntos, na velocidade da serial do console. As saídas voltam a 0 quando o nó reinicia.</p>
+<div class="acts"><button type="button" class="s" id="bior">Ler agora</button><span class="amsg" id="iomsg"></span></div>
+</div></section>
+
+<section class="sec" id="dev"><header><h3>Relés e PZEM</h3><p>Relés em GPIOs do módulo e medidores de energia PZEM-004T v3 (Modbus RTU em GPIO0/GPIO1), com o protocolo ADAILSILVA_V1: comandos na porta 10, respostas na 11 e telemetria na 20. Atualiza a cada 5 s.</p><span class="tag now">aplica na hora e grava</span></header>
+<div class="fl">
+<div id="dst" class="st">Carregando…</div>
+<div class="kv k4" id="kvdev"></div>
+<span class="lb" style="margin-top:18px">Relés · <code>AT+RELE</code></span>
+<div class="rl" id="rlist"></div>
+<div class="acts" id="rall"><button type="button" class="s" id="ron">Ligar todos</button><button type="button" class="s" id="roff">Desligar todos</button></div>
+<p class="hint"><b>Pulso</b>: o relé fica no estado contrário pelo tempo informado (100 ms a 24 h) e volta sozinho; no fim o nó manda uma telemetria com os relés. Os estados ficam gravados na EEPROM e voltam no boot (um pulso em andamento volta ao estado anterior).</p>
+<hr>
+<span class="lb">Pinos dos relés · <code>AT+RELECFG</code></span>
+<div class="rc" id="rcfg"></div>
+<div class="acts"><button type="button" class="s" id="radd">Adicionar relé</button><button type="button" class="s" id="rapl" disabled>Aplicar</button><button type="button" class="s" id="rdsc" hidden>Descartar</button><span class="amsg" id="rmsg"></span></div>
+<p class="hint">Até 8 relés, em qualquer GPIO0..GPIO9 (GPIO0 e GPIO1 só sem PZEM e sem serial transparente). O pino vira saída push-pull e fica só do relé: <code>AT+GPIOC</code> e <code>AT+WPIN</code> nele respondem erro. <b>Ativo em 0</b>: o relé liga com o pino em nível baixo (módulos de relé com optoacoplador). O nível certo é escrito antes de o pino virar saída: sem pulso falso no boot.</p>
+<hr>
+<span class="lb">PZEM-004T v3 · <code>AT+PZEMCFG</code></span>
+<div class="cin" style="margin-top:0"><input type="text" class="m" id="pzadr" maxlength="11" placeholder="f8 ou 01,02" aria-label="Endereços Modbus dos medidores (hexadecimal)"><button type="button" id="pzapl">Aplicar</button></div>
+<div class="acts"><button type="button" class="s" id="pzread">Ler agora</button><button type="button" class="s" id="pzoff">Desligar PZEM</button><span class="amsg" id="pzmsg"></span></div>
+<p class="hint">Endereços Modbus em hexadecimal, separados por vírgula (até 4 medidores). <code>f8</code> é o endereço genérico: só com <b>um</b> medidor no barramento. O PZEM usa GPIO0 (RX) e GPIO1 (TX), os mesmos pinos da serial transparente: <b>ligar um desliga o outro</b>. O PZEM trabalha em 5 V e o módulo em 3,3 V: use conversor de nível (veja o README).</p>
+<div id="pzl"></div>
+</div></section>
+
+<section class="sec" id="acts"><header><h3>Ações</h3><p>Comandos que valem na hora, sem passar pelo formulário.</p></header>
+<div class="fl">
+<span class="lb">Uplink agora</span>
+<div class="seg"><label><input type="radio" name="sxm" value="txt" checked><span>Texto</span></label><label><input type="radio" name="sxm" value="hex"><span>Hexadecimal</span></label></div>
+<div class="cin"><input type="text" id="sendp" aria-label="Payload do uplink agora"><button type="button" class="pri" id="bsend" style="min-width:0">Enviar</button></div>
+<div class="g3">
+<div class="f"><label class="l" for="sendport">FPort</label><input type="number" id="sendport" min="1" max="223" placeholder="a configurada"></div>
+<div class="f"><span class="lb">&nbsp;</span><label class="sw" style="padding:9px 12px"><input type="checkbox" id="sendcfm"><div><b>Confirmado</b></div></label></div>
+<div class="f"><label class="l" for="sendtr">Tentativas (confirmado)</label><input type="number" id="sendtr" min="1" max="15" placeholder="NBTRIALS"></div>
+</div>
+<p class="hint">Vazio: manda o payload configurado. Com FPort ou Confirmado, vai por <code>AT+SENDB</code> / <code>AT+TXBCFM</code>, e a resposta (<code>AT TX OK</code>, <code>AT ACK OK</code>...) aparece nos Logs.</p>
+<hr>
+<span class="lb">Classe agora (grava na EEPROM)</span>
+<p class="hint" style="margin:0 0 8px">Troque também o perfil do dispositivo no ChirpStack (Class-C / Class-B) e refaça o JOIN: é só no JOIN que ele lê a classe.</p>
+<div class="acts" style="margin-top:0"><button type="button" class="s" data-cls="A">Classe A</button><button type="button" class="s" data-cls="B">Classe B</button><button type="button" class="s" data-cls="C">Classe C</button></div>
+<hr>
+<span class="lb">LoRaWAN e relógio</span>
+<div class="acts" style="margin-top:0"><button type="button" class="s" id="bjoin">Refazer JOIN</button><button type="button" class="s" id="bdt">Pedir a hora (DeviceTimeReq)</button><button type="button" class="s" id="brecal">Recalibrar relógio</button></div>
+<hr>
+<span class="lb">Reinício</span>
+<div class="acts" style="margin-top:0"><button type="button" class="s" id="breb">Reiniciar</button></div>
+<p class="hint">Exportar, importar e restaurar o padrão de fábrica ficam em <a href="#mnt">Manutenção</a>.</p>
+<hr>
+<span class="lb">Firmware</span>
+<div class="kv w" id="kvf"></div>
+</div></section>
+
+</div>
+
+<!-- ============================================================ logs -->
+<div id="vlogs" class="vw" hidden>
+<div class="vh"><h2>Logs do nó</h2><p>Tudo o que o nó imprime no console ([TX], [RX], [JOIN], [Classe], [Beacon]…) desde que a página conectou. <b>Baixar do nó</b> traz o log que o firmware guarda em RAM (até 3 KB, com a hora desde que ligou), inclusive o que aconteceu antes de conectar. Com o <b>Diagnóstico de sessão</b> ligado (Configuração → Energia e serial, ou <code>verbose 1</code>), cada envio mostra DevAddr, NwkSKey, AppSKey, <i>Frame raw</i>, FCnt e MIC; esse bloco não vai para o log em RAM.</p></div>
+<div id="lnc" class="st warn" style="margin:0">Sem ligação com o nó: conecte em <a href="#cfg">Configuração</a>. O que já foi recebido continua aqui.</div>
+<div class="lbar">
+<button type="button" class="s" id="bpause">Pausar</button>
+<button type="button" class="s" id="bclr">Limpar tela</button>
+<button type="button" class="s" id="bnlog" title="Log guardado em RAM no nó (comando jlog), com a hora desde que ligou">Baixar do nó</button>
+<button type="button" class="s" id="bslog" title="Tudo o que esta página recebeu desde que conectou">Baixar sessão</button>
+<input type="text" id="lfil" style="min-width:300px" placeholder="Filtrar (ex.: [TX], [RX], JOIN, Classe)" aria-label="Filtrar">
+<label class="chk"><input type="checkbox" id="lauto" checked>Rolar automático</label>
+<span class="vst" id="lst"></span>
+</div>
+<div class="term big" id="term" aria-live="off"></div>
+<div class="cin" style="margin:0"><input type="text" class="m" id="cmdl" autocomplete="off" spellcheck="false" placeholder="Comando do console ou AT (ex.: status, class C, AT+SEND=5:teste, AT+CHMASK=?, AT+GPIOC=3:1:0)" aria-label="Comando do console"><button type="button" id="bcmd">Enviar</button></div>
+</div>
+
+<!-- ============================================================ diagnósticos -->
+<div id="vdiag" class="vw" hidden>
+<div class="vh"><h2>Diagnósticos</h2><p id="dwhere">Verificando onde os testes de rede rodam…</p></div>
+<div class="lbar">
+<input type="text" class="m" id="dh" list="dsg" maxlength="63" autocapitalize="off" autocomplete="off" spellcheck="false" value="chirpstack-v4.adailsilva.com.br" aria-label="Endereço ou nome do host">
+<datalist id="dsg"><option value="chirpstack-v4.adailsilva.com.br"><option value="8.8.8.8"><option value="openwrt.org"></datalist>
+<button type="button" class="t" data-t="ping" title="5 pacotes, 1 por segundo">Ping</button>
+<button type="button" class="t" data-t="trace" title="Até 15 saltos, 1 tentativa de 1 s por salto">Traceroute</button>
+<button type="button" class="t" data-t="dns" title="Resolve o nome pelo DNS deste computador">Nslookup</button>
+<button type="button" class="t" data-t="self" id="bself" title="Autoteste no firmware do nó (comando diag): rádio, EEPROM, sessão, tráfego, relógio, VDD, RAM">Autoteste do nó</button>
+<button type="button" id="dstop" hidden>Parar</button>
+</div>
+<p class="hint dh2"><span id="dhint"></span><span class="vst" id="dst"></span></p>
+<pre class="term big" id="dout">Escolha o destino e clique num dos testes.</pre>
+</div>
+
+<!-- ============================================================ classes -->
+<div id="vcls" class="vw" hidden>
+<div class="vh"><h2>Classes LoRaWAN</h2></div>
+<p class="intro2">A <b>classe</b> define <b>quando o nó escuta downlinks</b> (mensagens do servidor para o nó: comandos, ACK, ADR, reset remoto). O uplink é igual nas três. Todo nó precisa da <b>Classe A</b>; B e C são modos adicionais. O <b>gateway não tem classe</b>: ele atende nós A, B e C ao mesmo tempo.</p>
+<div class="cg">
+<div class="cc"><div class="clh"><b>A</b><span>Fala, depois escuta<small>obrigatória em todo nó</small></span></div>
+<div class="tl" title="uplink, RX1, RX2, dormindo"><i class="t" style="flex:3"></i><i class="g" style="flex:2"></i><i class="r" style="flex:1"></i><i class="g" style="flex:2"></i><i class="r" style="flex:1"></i><i class="g" style="flex:18"></i><i class="t" style="flex:3"></i></div>
+<dl><dt>Escuta</dt><dd>Só em 2 janelas curtas (RX1 e RX2) logo depois de cada uplink</dd><dt>Atraso</dt><dd>Até o <b>próximo uplink</b> (segundos a horas)</dd><dt>Consumo</dt><dd>🔋 mínimo</dd></dl>
+<p class="ex"><b>Use quando</b> o nó é a bateria, quase só envia dados e o downlink pode esperar.<br><b>Exemplos:</b> medidores de energia/água/gás, temperatura, nível, estação meteorológica, rastreador.</p></div>
+<div class="cc"><div class="clh"><b>B</b><span>Escuta em horários combinados<small>beacon a cada 128 s + ping slots</small></span></div>
+<div class="tl" title="beacon e ping slots"><i class="b" style="flex:2"></i><i class="g" style="flex:3"></i><i class="r" style="flex:1"></i><i class="g" style="flex:3"></i><i class="r" style="flex:1"></i><i class="g" style="flex:3"></i><i class="r" style="flex:1"></i><i class="g" style="flex:3"></i><i class="r" style="flex:1"></i><i class="g" style="flex:3"></i><i class="r" style="flex:1"></i><i class="g" style="flex:3"></i><i class="b" style="flex:2"></i></div>
+<dl><dt>Escuta</dt><dd>Janelas A + <b>ping slots</b> a cada 1, 2, 4 … 128 s, sincronizados pelo beacon (hora GPS)</dd><dt>Atraso</dt><dd>Até o próximo ping slot (<b>1 s a 128 s</b>)</dd><dt>Consumo</dt><dd>🔋🔋 baixo/médio</dd><dt>Exige</dt><dd>Gateways com <b>GPS + PPS</b></dd></dl>
+<p class="ex"><b>Use quando</b> o nó é a bateria mas precisa receber comandos com atraso previsível.<br><b>Exemplos:</b> fechadura, válvula de irrigação a bateria, sirene/avisador, multicast agendado.</p></div>
+<div class="cc"><div class="clh"><b>C</b><span>Escuta o tempo todo<small>recepção contínua na RX2</small></span></div>
+<div class="tl" title="uplink e recepção contínua"><i class="t" style="flex:3"></i><i class="r" style="flex:13"></i><i class="t" style="flex:3"></i><i class="r" style="flex:11"></i></div>
+<dl><dt>Escuta</dt><dd><b>Sempre</b>, exceto enquanto transmite</dd><dt>Atraso</dt><dd><b>Quase imediato</b> (só a rede)</dd><dt>Consumo</dt><dd>🔌 alto: ~10–12 mA o tempo todo só no rádio</dd><dt>Exige</dt><dd>Alimentação contínua</dd></dl>
+<p class="ex"><b>Use quando</b> o nó está na rede elétrica e precisa reagir rápido.<br><b>Exemplos:</b> relé/disjuntor remoto, iluminação pública, tomada inteligente, alarme, FUOTA multicast.</p></div>
+</div>
+<div class="lg"><span style="--c:var(--acc)">uplink (TX)</span><span style="--c:var(--rx)">nó escutando (RX)</span><span style="--c:var(--warn)">beacon do gateway</span><span style="--c:var(--line)">rádio dormindo</span></div>
+
+<div class="cc dev"><h3>Neste nó (LoRaMac-node v4.7.1)</h3>
+<table class="tbl"><tr><th>Classe</th><th>Estado</th><th>Detalhe</th></tr>
+<tr><td class="c">A</td><td>✅</td><td><b>Implementada.</b> RX1/RX2 depois de cada uplink. Padrão de fábrica.</td></tr>
+<tr><td class="c">B</td><td>✅</td><td><b>Implementada.</b> DeviceTimeReq → beacon → PingSlotInfoReq. Exige gateway com GPS + PPS e, no módulo, o cristal de 32,768 kHz: sem ele o relógio é o LSI calibrado e os ping slots podem ser perdidos.</td></tr>
+<tr><td class="c">C</td><td>✅</td><td><b>Implementada.</b> Recepção contínua na RX2 (923,3 MHz, DR8). Exige alimentação contínua.</td></tr></table>
+<p class="note" id="clsnow" hidden></p>
+<p class="note">Troque a classe em <a href="#acts">Ações</a>, em <a href="#radio">Rádio e classe</a>, pelo console (<span class="k">class A|B|C</span>) ou por downlink na FPort de comandos (<span class="k">01 00</span> / <span class="k">01 01</span> / <span class="k">01 02</span>). O comando <span class="k">classes</span> no console mostra este resumo.</p>
+<p class="note">No ChirpStack, o perfil do dispositivo precisa combinar com a classe do nó: <i>Class-B</i> ou <i>Class-C</i> marcadas.</p>
+<p class="note">✅ em uso / disponível · 🧪 disponível, falta validar em campo · 🗓️ planejado · ➖ não ativado · ❌ não existe</p></div>
+
+<div class="cc"><h3>Comparativo</h3><table class="tbl">
+<tr><th></th><th>Classe A</th><th>Classe B</th><th>Classe C</th></tr>
+<tr><td>Obrigatória</td><td>Sim, em todo nó</td><td>Opcional</td><td>Opcional</td></tr>
+<tr><td>Janelas de recepção</td><td>RX1 + RX2 depois de cada uplink</td><td>RX1/RX2 + ping slots (1–128 s)</td><td>Contínua, exceto no TX</td></tr>
+<tr><td>Quem inicia o downlink</td><td>Só depois de um uplink</td><td>Servidor, no próximo ping slot</td><td>Servidor, a qualquer momento</td></tr>
+<tr><td>Atraso máximo</td><td>Intervalo entre uplinks</td><td>Periodicidade do ping slot</td><td>~imediato</td></tr>
+<tr><td>Alimentação típica</td><td>Bateria (anos)</td><td>Bateria (meses a anos)</td><td>Rede elétrica / fonte</td></tr>
+<tr><td>Exige do gateway</td><td>Nada especial</td><td>GPS + PPS (beacon)</td><td>Nada especial</td></tr>
+<tr><td>Downlink do gateway</td><td><span class="k">tmst</span> (RX1/RX2)</td><td>beacon + <span class="k">tmms</span> (hora GPS)</td><td><span class="k">"imme": true</span></td></tr>
+<tr><td>Multicast (FUOTA)</td><td>Não</td><td>Sim</td><td>Sim</td></tr>
+</table></div>
+
+<div class="cc"><h3>Qual classe usar</h3><ol>
+<li>Quase só envia dados e o downlink pode esperar o próximo envio? <b>Classe A</b>: o padrão para a maioria dos sensores.</li>
+<li>Precisa receber comandos com atraso previsível, a bateria? <b>Classe B</b>, se todos os gateways da área tiverem GPS com PPS.</li>
+<li>Está na rede elétrica e precisa obedecer rápido? <b>Classe C</b>.</li>
+<li>Só quer um downlink mais rápido de vez em quando? Fique na <b>Classe A</b> e diminua o intervalo de uplink.</li>
+</ol><p class="note">B e C não devem ser usadas ao mesmo tempo no mesmo nó. No <b>ChirpStack v4</b> a classe é escolhida no perfil do dispositivo (abas <i>Class-B</i> e <i>Class-C</i>); sem nenhuma marcada, o dispositivo é Classe A. Explicação completa no README do firmware, seção <b>Classes LoRaWAN</b>.</p></div>
+</div>
+</main>
+</div>
+
+<footer><span id="fn">LoRaWAN Node Radioenge Atuadores e Sensores</span> · Desenvolvido por <a href="https://k8s.adailsilva.com.br/" target="_blank" rel="noopener"><b>AdailSilva</b></a></footer>
+<div id="toast" role="status"></div>
+<dialog id="dlg"><h3 id="dlgt"></h3><p id="dlgm"></p><label class="sw" id="dlgc" hidden style="margin:0 0 14px"><input type="checkbox" id="dlgcb"><div><b>Zerar também o DevNonce</b><small>o ChirpStack recusa os JOINs até você limpar os DevNonces lá</small></div></label>
+<div class="acts"><button type="button" id="dlgn">Cancelar</button><button type="button" class="pri" id="dlgy" style="min-width:0">Confirmar</button></div></dialog>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const NUS = "6e400001-b5a3-f393-e0a9-e50e24dcca9e", NUS_RX = "6e400002-b5a3-f393-e0a9-e50e24dcca9e", NUS_TX = "6e400003-b5a3-f393-e0a9-e50e24dcca9e";
+const HM10 = 0xffe0, HM10C = 0xffe1;
+const MAXLOG = 3000;
+
+// ------------------------------------------------------------------ utilidades
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+const sv = v => v == null ? "" : String(v);
+const iv = v => { const n = parseInt(v, 10); return isNaN(n) ? 0 : n; };
+const bv = v => v === true || v === 1 || v === "1";
+const cleanHex = s => s.replace(/[\s:-]/g, "").toUpperCase();
+const isHex = (s, bytes) => { const t = cleanHex(s); return t.length > 0 && t.length % 2 === 0 && /^[0-9A-F]+$/.test(t) && (bytes == null || t.length === bytes * 2); };
+const textToHex = t => Array.from(new TextEncoder().encode(t), b => b.toString(16).padStart(2, "0")).join("").toUpperCase();
+const hexToText = h => { const b = []; for (let i = 0; i + 1 < h.length; i += 2) b.push(parseInt(h.substr(i, 2), 16)); return new TextDecoder().decode(new Uint8Array(b)); };
+const printable = h => { for (let i = 0; i + 1 < h.length; i += 2) { const v = parseInt(h.substr(i, 2), 16); if (v < 0x20 || v > 0x7e) return false; } return true; };
+const fmtUp = s => { const d = Math.floor(s / 86400), t = [Math.floor(s / 3600) % 24, Math.floor(s / 60) % 60, s % 60].map(x => String(x).padStart(2, "0")).join(":"); return d ? `${d} d ${t}` : t; };
+function toast(t) { const e = $("toast"); e.textContent = t; e.classList.add("on"); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.remove("on"), 3200); }
+function ask(title, msg, ok = "Confirmar", nonce = false) {
+  return new Promise(res => {
+    const d = $("dlg"); $("dlgt").textContent = title; $("dlgm").textContent = msg; $("dlgy").textContent = ok;
+    $("dlgc").hidden = !nonce; $("dlgcb").checked = false;
+    const done = v => { d.close(); $("dlgy").onclick = $("dlgn").onclick = null; res(v); };
+    $("dlgy").onclick = () => done(nonce ? {nonce: $("dlgcb").checked} : true);
+    $("dlgn").onclick = () => done(false);
+    d.oncancel = () => done(false);
+    d.showModal();
+  });
+}
+
+// ------------------------------------------------------------------ transportes
+class LineTransport {
+  constructor() { this.buf = ""; this.onLine = null; this.onClose = null; this.closed = false; this.dec = new TextDecoder(); }
+  feed(bytes) {
+    this.buf += this.dec.decode(bytes, {stream: true});
+    let i;
+    while ((i = this.buf.indexOf("\n")) >= 0) {
+      const line = this.buf.slice(0, i).replace(/\r/g, "");
+      this.buf = this.buf.slice(i + 1);
+      if (this.onLine) this.onLine(line);
+    }
+    if (this.buf.length > 4096) this.buf = this.buf.slice(-4096);
+  }
+  markClosed() { if (!this.closed) { this.closed = true; if (this.onClose) this.onClose(); } }
+}
+
+// Fabricantes (USB vendor ID) dos adaptadores USB-serial e dos ST-LINK com porta virtual
+const USB_SERIAL = [0x067b /* Prolific PL2303 */, 0x10c4 /* Silicon Labs CP210x */, 0x1a86 /* WCH CH340/CH343 */,
+  0x0403 /* FTDI */, 0x0483 /* ST-LINK/V2-1 e V3 */, 0x2341 /* Arduino */, 0x239a /* Adafruit */, 0x303a /* Espressif */]
+  .map(v => ({usbVendorId: v}));
+
+class SerialTransport extends LineTransport {
+  static async open(baud) {
+    // Só os adaptadores USB-serial conhecidos: no Linux o Chrome lista também as
+    // ttyS0…ttyS31 da placa-mãe, que não são o nó e não abrem.
+    const port = await navigator.serial.requestPort($("sall").checked ? {} : {filters: USB_SERIAL});
+    return SerialTransport.fromPort(port, baud);
+  }
+  // Abre (ou reabre, depois de "save" com outra velocidade) uma porta já escolhida
+  static async fromPort(port, baud) {
+    await port.open({baudRate: baud, dataBits: 8, stopBits: 1, parity: "none", flowControl: "none", bufferSize: 16384});
+    const t = new SerialTransport();
+    t.port = port;
+    const info = port.getInfo ? port.getInfo() : {};
+    t.name = "USB-serial" + (info.usbVendorId ? ` ${info.usbVendorId.toString(16).padStart(4, "0")}:${(info.usbProductId || 0).toString(16).padStart(4, "0")}` : "");
+    t.writer = port.writable.getWriter();
+    t.baud = baud;
+    t.loop();
+    return t;
+  }
+  async loop() {
+    try {
+      while (this.port.readable && !this.closed) {
+        this.reader = this.port.readable.getReader();
+        try {
+          for (;;) {
+            const {value, done} = await this.reader.read();
+            if (done) break;
+            if (value) this.feed(value);
+          }
+        } finally { this.reader.releaseLock(); }
+      }
+    } catch (e) { /* cabo removido */ }
+    this.markClosed();
+  }
+  async send(bytes) { await this.writer.write(bytes); }
+  async close() {
+    this.closed = true;
+    try { if (this.reader) await this.reader.cancel(); } catch (e) {}
+    try { this.writer.releaseLock(); } catch (e) {}
+    try { await this.port.close(); } catch (e) {}
+    this.markClosed();
+  }
+}
+
+class BleTransport extends LineTransport {
+  static async open() {
+    const dev = await navigator.bluetooth.requestDevice({
+      filters: [{services: [NUS]}, {services: [HM10]}, {namePrefix: "HM"}, {namePrefix: "JDY"}, {namePrefix: "BT"}],
+      optionalServices: [NUS, HM10]
+    });
+    const t = new BleTransport();
+    t.dev = dev;
+    t.name = "BLE · " + (dev.name || dev.id);
+    dev.addEventListener("gattserverdisconnected", () => t.markClosed());
+    const gatt = await dev.gatt.connect();
+    let wr, nt;
+    try {
+      const s = await gatt.getPrimaryService(NUS);
+      wr = await s.getCharacteristic(NUS_RX); nt = await s.getCharacteristic(NUS_TX);
+    } catch (e) {
+      try {
+        const s = await gatt.getPrimaryService(HM10);
+        wr = nt = await s.getCharacteristic(HM10C);
+      } catch (e2) {
+        gatt.disconnect();
+        throw new Error("este dispositivo não tem serviço UART (Nordic UART ou HM-10 FFE0/FFE1)");
+      }
+    }
+    t.wr = wr;
+    t.noResp = !!wr.properties.writeWithoutResponse;
+    nt.addEventListener("characteristicvaluechanged", ev => t.feed(new Uint8Array(ev.target.value.buffer)));
+    await nt.startNotifications();
+    return t;
+  }
+  async send(bytes) {
+    for (let i = 0; i < bytes.length; i += 20) {
+      const part = bytes.slice(i, i + 20);
+      if (this.noResp && this.wr.writeValueWithoutResponse) await this.wr.writeValueWithoutResponse(part);
+      else if (this.wr.writeValueWithResponse) await this.wr.writeValueWithResponse(part);
+      else await this.wr.writeValue(part);
+    }
+  }
+  async close() { this.closed = true; try { this.dev.gatt.disconnect(); } catch (e) {} this.markClosed(); }
+}
+
+// ------------------------------------------------------------------ protocolo
+const N = {t: null, on: false, ready: false, info: {}, status: {}, config: {}, keys: {}, io: null, dev: null, lastAt: "", diag: null, jl: [], jlm: null,
+           log: [], pending: null, queue: Promise.resolve(), poll: null, paused: false};
+
+function onLine(line) {
+  if (line.startsWith("@")) { onReply(line); return; }
+  if (!line.trim()) {
+    // Linha em branco do firmware (separa cada envio e as chaves do "Frame raw"):
+    // entra no log, mas sem repetir nem abrir o log com uma.
+    if (N.log.length && N.log[N.log.length - 1] !== "") addLog("");
+    return;
+  }
+  if (/^AT [A-Z]/.test(line)) N.lastAt = line;        // resposta dos comandos AT ("AT OK", "AT PARAM ERROR"...)
+  addLog(line);
+  if (line.includes("Digite 'help'")) {            // o nó reiniciou: volta ao modo app
+    N.ready = false; $("bread").disabled = true;
+    fail("o nó reiniciou");
+    setTimeout(start, 300);
+  }
+}
+function onReply(line) {
+  const js = s => { try { const v = JSON.parse(s); return v && typeof v === "object" ? v : null; } catch (e) { return null; } };
+  if (line.startsWith("@I ")) { N.info = js(line.slice(3)) || N.info; renderInfo(); }
+  else if (line.startsWith("@S ")) { N.status = js(line.slice(3)) || N.status; renderStatus(); checkCfg(); }
+  else if (line.startsWith("@C ")) { const prev = N.config; N.config = js(line.slice(3)) || N.config; loadForm(prev); }
+  else if (line.startsWith("@K ")) { N.keys = js(line.slice(3)) || N.keys; renderKeys(); }
+  else if (line.startsWith("@IO ")) { N.io = js(line.slice(4)) || N.io; renderIo(); }
+  else if (line.startsWith("@DV ")) { N.dev = js(line.slice(4)) || N.dev; renderDev(); }
+  else if (line.startsWith("@LN ")) { N.jlm = js(line.slice(4)); }
+  else if (line.startsWith("@L ") || line === "@L") { N.jl.push(line.slice(3)); }
+  else if (line.startsWith("@D ")) { N.diag = js(line.slice(3)); }
+  else if (line.startsWith("@OK")) complete({ok: true, msg: line.slice(3).trim()});
+  else if (line.startsWith("@ERR")) { complete({ok: false, msg: line.slice(4).trim() || "erro"}); addLog(line); }
+}
+function complete(r) { const p = N.pending; N.pending = null; if (p) p(r); }
+function fail(why) { complete({ok: false, msg: why}); }
+
+function cmd(line, timeout = 6000) {
+  const run = N.queue.then(async () => {
+    if (!/^AT/i.test(line)) return send(line, timeout);
+    N.lastAt = "";
+    const r = await send(line, timeout);
+    if (!r.ok && N.lastAt) r.msg = N.lastAt;           // "AT PARAM ERROR" em vez de "AT"
+    return Object.assign(r, {at: N.lastAt});
+  });
+  N.queue = run.catch(() => {});
+  return run;
+}
+async function send(line, timeout) {
+  if (!N.t || N.t.closed) return {ok: false, msg: "desconectado"};
+  const p = new Promise(res => { N.pending = res; });
+  try {
+    // O nó dorme em STOP: o 1º byte só acorda o MCU, e os seguintes que chegam
+    // juntos se perdem enquanto ele reconfigura o relógio. Manda um "\r" para
+    // acordar, espera e só então o comando (o firmware fica 3 s acordado).
+    await N.t.send(new TextEncoder().encode("\r"));
+    await new Promise(res => setTimeout(res, 60));
+    await N.t.send(new TextEncoder().encode(line + "\r\n"));
+  }
+  catch (e) { N.pending = null; return {ok: false, msg: String(e.message || e)}; }
+  let to;
+  const r = await Promise.race([p, new Promise(res => { to = setTimeout(() => res(null), timeout); })]);
+  clearTimeout(to);
+  if (r) return r;
+  N.pending = null;
+  return {ok: false, msg: "sem resposta do nó"};
+}
+
+async function start() {
+  let r = await cmd("mode app");
+  if (!r.ok) r = await cmd("mode app");           // o 1º caractere pode acordar o MCU
+  if (!r.ok) return false;
+  await cmd("info"); await cmd("jconfig"); await cmd("jstatus"); await cmd("jkeys");
+  const io = await cmd("jio");
+  if (!io.ok) { $("gst2").className = "st warn"; $("gst2").textContent = "Este firmware não tem o comando jio: atualize o nó para ver e configurar os GPIOs aqui."; }
+  const dv = await cmd("jdev");
+  if (!dv.ok) { $("dst").className = "st warn"; $("dst").textContent = "Este firmware não tem o comando jdev (relés e PZEM): grave o firmware com atuadores e sensores."; }
+  N.ready = true;
+  renderDirty();
+  return true;
+}
+
+async function connect(kind) {
+  $("cerr").hidden = true;
+  let t;
+  try {
+    t = kind === "ble" ? await BleTransport.open() : await SerialTransport.open(iv($("baud").value));
+  } catch (e) {
+    if (e && (e.name === "NotFoundError" || e.name === "AbortError")) return;   // janela cancelada
+    $("cerr").textContent = "Não foi possível abrir: " + (e.message || e) + (kind === "ble" ? ""
+      : e && e.name === "InvalidStateError" ? ". Esta porta já está aberta nesta página ou em outra aba: feche a outra aba ou recarregue a página."
+      : ". A porta não abriu. Confira: (1) se escolheu o adaptador (ttyUSB0 / PL2303, CP210x, CH340, FTDI), e não uma ttyS da placa-mãe; " +
+        "(2) se outro programa está com ela aberta: Firefox, outra aba, picocom ou o build.sh monitor (no terminal: sudo fuser -v /dev/ttyUSB0); " +
+        "(3) no Linux, se o navegador foi aberto antes de você entrar no grupo dialout: feche o Chrome por completo (ele continua rodando em segundo plano; use chrome://restart ou pkill chrome) e abra de novo; " +
+        "(4) Chromium do snap: sudo snap connect chromium:raw-usb.");
+    $("cerr").hidden = false;
+    return;
+  }
+  await attach(t);
+}
+async function attach(t) {
+  N.t = t; N.info = {}; N.status = {}; N.config = {}; N.keys = {}; N.io = null; N.dev = null; RE = null; N.cfgRev = undefined; N.cfgSync = false; SKV = false; $("sk").hidden = true; N.ready = false; formLoaded = false; $("bread").disabled = true;
+  t.onLine = onLine;
+  t.onClose = () => { if (N.t === t) lost(); };
+  showNode(true);
+  $("clk").textContent = t.name;
+  addLog(`[página] Conectado por ${t.name}.`);
+  const ok = await start();
+  if (!ok) {
+    $("gst").className = "st err";
+    $("gst").textContent = "O nó não respondeu ao \"mode app\". O picocom (build.sh flash/monitor) ainda está aberto? No Linux ele e o navegador abrem a porta juntos e dividem os bytes: feche-o (Ctrl+A e Ctrl+X) e conecte de novo. Confira também as ligações (TX/RX cruzados), a velocidade (115200) e se o firmware é o do nó Radioenge.";
+  }
+  N.poll = setInterval(() => {
+    if (N.t && N.ready && !N.pending && !document.hidden) { cmd("jstatus"); cmd("jkeys"); if (VIEW === "cfg" && N.io) cmd("jio"); if (VIEW === "cfg" && N.dev) cmd("jdev"); }
+  }, 5000);
+}
+// "save" com outra velocidade: o nó responde na antiga e troca; a página reabre a mesma porta
+async function reopenSerial(baud) {
+  const old = N.t;
+  if (!old || !old.port) return false;
+  clearInterval(N.poll);
+  old.onClose = null;
+  await old.close();
+  await new Promise(res => setTimeout(res, 400));
+  try {
+    const t = await SerialTransport.fromPort(old.port, baud);
+    $("baud").value = String(baud);
+    addLog(`[página] Serial agora em ${baud} bps: reconectando.`);
+    await attach(t);
+    return true;
+  } catch (e) {
+    lost();
+    $("cerr").textContent = `O nó passou para ${baud} bps, mas a porta não reabriu (${e.message || e}). Escolha ${baud} na velocidade e conecte de novo.`;
+    return false;
+  }
+}
+function lost() {
+  clearInterval(N.poll);
+  fail("ligação perdida");
+  addLog("[página] Ligação perdida.");
+  showNode(false);
+  $("cerr").textContent = "A ligação com o nó caiu (cabo removido, Bluetooth fora de alcance ou o nó desligou). Conecte de novo.";
+  $("cerr").hidden = false;
+  if (VIEW !== "cfg") toast("A ligação com o nó caiu. Conecte de novo em Configuração.");
+}
+async function disconnect() {
+  clearInterval(N.poll);
+  const t = N.t; N.t = null;
+  if (t) await t.close();
+  showNode(false);
+}
+
+// ------------------------------------------------------------------ telas
+function showNode(on) {
+  N.on = on;
+  if (on) { $("gst").className = "st"; $("gst").textContent = "Carregando…"; $("kvs").innerHTML = $("kvt").innerHTML = $("kvm").innerHTML = ""; renderLog(true); }
+  layout();
+}
+
+// ------------------------------------------------------------------ páginas
+// Configuração (com o menu lateral) e, no topo, Logs,
+// Diagnósticos e Classes. #logs, #diag e #classes abrem as páginas; qualquer
+// outro endereço (#sts, #radio...) é a Configuração.
+let VIEW = "cfg";
+const VIEWS = {"#logs": "logs", "#diag": "diag", "#classes": "cls"};
+function layout() {
+  const on = N.on, cfg = VIEW === "cfg";
+  $("vconn").hidden = !cfg || on; $("vnode").hidden = !cfg || !on; $("side").hidden = !cfg || !on;
+  $("vlogs").hidden = VIEW !== "logs"; $("vdiag").hidden = VIEW !== "diag"; $("vcls").hidden = VIEW !== "cls";
+  $("chips").hidden = !on; $("bdis").hidden = !on; $("ncfg").hidden = cfg;
+  $("wrap").classList.toggle("solo", !(cfg && on)); $("wrap").classList.toggle("view", !cfg);
+  document.querySelectorAll(".nav a[data-v]").forEach(a => a.classList.toggle("on", a.dataset.v === VIEW));
+  $("lnc").hidden = on; $("bnlog").disabled = !on; $("cmdl").disabled = !on; $("bcmd").disabled = !on;
+  if (!D.busy) $("bself").disabled = !on;
+  $("lst").textContent = on ? `recebendo por ${N.t ? N.t.name : "-"}` : (N.log.length ? "desconectado" : "");
+}
+function route() {
+  const h = location.hash, v = VIEWS[h] || "cfg", changed = v !== VIEW;
+  VIEW = v;
+  layout();
+  if (v === "logs") renderLog(true);
+  if (v === "diag" && D.local === undefined) probeLocal();
+  if (v === "cfg") {
+    const el = h.length > 1 && h !== "#cfg" ? document.getElementById(h.slice(1)) : null;
+    if (el && !el.closest("[hidden]")) el.scrollIntoView(); else if (changed) window.scrollTo(0, 0);
+  } else if (changed) window.scrollTo(0, 0);
+}
+
+const isOtaa = () => sv(N.info.mode) !== "abp";
+function renderInfo() {
+  const i = N.info, mode = isOtaa() ? "OTAA" : "ABP";
+  document.querySelectorAll(".md").forEach(e => e.textContent = mode);
+  document.querySelectorAll("[data-m]").forEach(e => e.hidden = e.dataset.m !== mode.toLowerCase());
+  $("hn").textContent = sv(i.fw) || "LoRaWAN Node Radioenge Atuadores e Sensores";
+  $("hm").textContent = `v${sv(i.ver)} · ${sv(i.mcu)} + ${sv(i.radio)} · ${sv(i.region)}`;
+  $("fn").textContent = sv(i.fw) || "LoRaWAN Node Radioenge Atuadores e Sensores";
+  document.title = (sv(i.fw) || "LoRaWAN Node Radioenge Atuadores e Sensores");
+  $("bjoin").textContent = isOtaa() ? "Refazer JOIN" : "Reativar sessão ABP";
+  $("bsjoin").textContent = isOtaa() ? "Refazer JOIN" : "Reativar sessão ABP";
+  $("bsjoin").title = isOtaa() ? "Pede um novo JOIN à rede agora (DevNonce novo)" : "Reaplica DevAddr e chaves da EEPROM (sessão ABP)";
+  $("actp").textContent = isOtaa() ? "JOIN pelo ar: DevEUI, JoinEUI e AppKey iguais aos do ChirpStack. Mudar qualquer uma faz um JOIN novo."
+    : "Sessão pré-provisionada (LoRaWAN 1.0.x): DevAddr e chaves iguais às da aba Activation do ChirpStack.";
+  $("fwv").innerHTML = `Firmware <b>${esc(sv(i.fw))} v${esc(sv(i.ver))}</b> · ${esc(sv(i.stack))} · região ${esc(sv(i.region))} · ${esc(sv(i.mcu))} + ${esc(sv(i.radio))} · DevEUI <code>${esc(sv(i.deveui))}</code>`;
+  $("kvf").innerHTML = kvHtml([
+    ["Firmware", sv(i.fw), "v" + sv(i.ver)], ["Pilha", sv(i.stack), ""], ["Hardware", `${sv(i.mcu)} + ${sv(i.radio)}`, sv(i.region)],
+    ["DevEUI", sv(i.deveui), ""], ["Ligação", N.t ? N.t.name : "-", ""]]);
+}
+const kvHtml = items => items.map(([l, v, s]) => `<div><span>${esc(l)}</span><b title="${esc(v)}">${esc(v || "-")}</b><small>${esc(s || "")}</small></div>`).join("");
+const clkName = c => ({lse: "LSE (cristal)", lsi_hse: "LSI (ref. HSE)", lsi_hsi: "LSI (ref. HSI16)"}[c] || "-");
+const bcnName = b => ({A: "adquirindo", R: "recebendo", N: "perdeu o último", L: "perdido"}[b] || "-");
+
+function renderStatus() {
+  // maccls: a classe que a LoRaMac-node usa de fato (firmwares antigos só mandam cls)
+  const s = N.status, joined = bv(s.joined), cls = sv(s.maccls) || sv(s.cls), cfg = sv(s.cfgcls), clk = sv(s.clk), lp = iv(s.lowpower);
+  const noLse = clk && clk !== "lse";
+  $("gst").className = "st " + (joined ? "ok" : "warn");
+  $("gst").textContent = joined ? `Sessão LoRaWAN ativa · DevAddr ${sv(s.devaddr)} · Classe ${cls}`
+    : (bv(s.joining) ? `JOIN em andamento (${iv(s.joins)} tentativa(s), DevNonce ${iv(s.devnonce)})…` : "Sem sessão LoRaWAN.");
+  $("bw").hidden = !(cfg === "B" && noLse);
+  $("hdirty").hidden = !bv(s.dirty);
+  const isB = cls === "B" || cfg === "B", ndl = iv(s.dnl);
+  // LoRaWAN: sessão, endereço, classe e próximo envio
+  $("kvs").innerHTML = kvHtml([
+    ["Sessão", joined ? "ativa" : (bv(s.joining) ? "JOIN…" : "sem sessão"), isOtaa() ? `${iv(s.joins)} JOIN(s) · DevNonce ${iv(s.devnonce)}` : "ABP"],
+    ["DevAddr", joined ? sv(s.devaddr) : "-", joined ? (isOtaa() ? "dado pelo servidor no JOIN" : "da configuração (ABP)") : ""],
+    ["Classe", cls || "-", cls === cfg ? `em uso no nó · gravada: ${cfg}` : `gravada: ${cfg} (trocando…)`],
+    ["Próximo envio", joined ? (iv(s.next) > 0 ? `em ${iv(s.next)} s` : "em instantes") : "-",
+      `DR${iv(s.dr)}` + (iv(s.freq) ? ` · ${iv(s.txpow)} dBm · ${(iv(s.freq) / 1e6).toFixed(1)} MHz` : "") + ` · a cada ${iv(s.interval)} s`]]);
+  // Tráfego: uplinks, downlinks, último downlink e hora da rede (ou o beacon, na Classe B)
+  const gps = `${iv(s.gps)} s · ${bv(s.synced) ? "sincronizada" : "não sincronizada"}`;
+  $("kvt").innerHTML = kvHtml([
+    ["Uplinks", String(iv(s.upl)), `${iv(s.uperr)} erros · ${iv(s.acks)} ACKs · FCnt ${iv(s.fcntup)}`],
+    ["Downlinks", String(ndl), `FCntDown ${iv(s.fcntdn)}`],
+    ["Último downlink", ndl > 0 ? sv(s.lslot) : "-", ndl > 0 ? `porta ${iv(s.lport)} · ${sv(s.ldata) || "sem dados"} · ${iv(s.rssi)} dBm · SNR ${iv(s.snr)} dB` : "nenhum desde que ligou"],
+    isB ? ["Beacon", bcnName(sv(s.beacon)), `${iv(s.brx)} recebidos · ${iv(s.bmiss)} perdidos · ping ${1 << iv(s.ping)} s · GPS ${gps}`]
+        : ["Hora GPS", `${iv(s.gps)} s`, bv(s.synced) ? "sincronizada" : "não sincronizada"]]);
+  // Módulo: tempo ligado, relógio, energia e tensão
+  $("kvm").innerHTML = kvHtml([
+    ["Ligado há", fmtUp(iv(s.up)), ""],
+    ["Relógio", clkName(clk), `${iv(s.clkhz)} Hz · ~${iv(s.ppm)} ppm`],
+    ["Energia", ["sem STOP", "STOP", "STOP econ."][lp] || "-", ["para depurar", "console sempre pronto", "1º caractere só acorda"][lp] || ""],
+    ["VDD", `${iv(s.vdd)} mV`, (bv(s.ext) ? "alimentação externa" : "bateria") + (N.io ? ` · AT+BAT ${iv(N.io.bat)}` : "")]]);
+  // chips
+  $("cse").className = joined ? "ok" : "warn";
+  $("csl").textContent = joined ? "Sessão ativa" : (bv(s.joining) ? "JOIN…" : "Sem sessão");
+  $("cidl").textContent = joined ? "DevAddr" : "DevEUI";
+  $("cid").textContent = joined ? sv(s.devaddr) : sv(N.info.deveui || N.config.deveui) || "-";
+  $("ccl").textContent = cls || "-";
+  $("clsnow").hidden = !cls;
+  $("clsnow").innerHTML = `<b>Agora:</b> Classe ${esc(cls)} em uso (configurada: ${esc(cfg)})` + (noLse ? " · relógio sem cristal de 32,768 kHz (Classe B instável)." : ".");
+}
+
+// ------------------------------------------------------------------ console
+function lineClass(l) {
+  if (/ERRO|FALHOU|Falha|@ERR|inválid|recusad/i.test(l)) return "e";
+  if (/AVISO|ATENÇÃO|Perdido|Adiado|Sem Join-accept/.test(l)) return "w";
+  if (l.startsWith("[RX]") || l.startsWith("[Beacon] Recebido")) return "i";
+  if (l.startsWith("[TX]") || l.startsWith("[JOIN] Conectado") || l.startsWith("[Classe] Agora")) return "o";
+  if (l.startsWith("EV_TXSTART") || l === "Packet queued.") return "o";   // diagnóstico de sessão
+  if (l.startsWith("> ") || l.startsWith("[página]")) return "u";
+  return "";
+}
+function addLog(l) {
+  N.log.push(l);
+  if (N.log.length > MAXLOG) N.log.splice(0, N.log.length - MAXLOG);
+  if (!N.paused) renderLog(false, l);
+}
+function renderLog(full, last) {
+  const term = $("term"), f = $("lfil").value.trim().toLowerCase();
+  if (VIEW !== "logs" && !full) return;                // fora da página Logs só guarda
+  const row = l => { const c = lineClass(l); return `<div${c ? ` class="${c}"` : ""}>${esc(l) || "&nbsp;"}</div>`; };
+  if (full) {
+    term.innerHTML = N.log.filter(l => !f || l.toLowerCase().includes(f)).map(row).join("");
+  } else if (last != null) {
+    if (f && !last.toLowerCase().includes(f)) return;
+    term.insertAdjacentHTML("beforeend", row(last));
+    while (term.childElementCount > MAXLOG) term.firstElementChild.remove();
+  }
+  if ($("lauto").checked) term.scrollTop = term.scrollHeight;
+  if (N.on && !N.paused) $("lst").textContent = `${N.t ? N.t.name : ""} · atualizado ${new Date().toLocaleTimeString()}`;
+}
+const stamp = () => { const d = new Date(), p = n => String(n).padStart(2, "0"); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; };
+function saveText(name, text) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([text], {type: "text/plain"}));
+  a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+// "Baixar do nó": o log que o firmware guarda em RAM, em blocos ("jlog <de>" ->
+// "@L ..." + "@LN {start,next,end}").
+async function downloadNodeLog() {
+  if (!N.ready) { toast("Conecte o nó primeiro."); return; }
+  const b = $("bnlog"), lines = [];
+  let from = 0, start = -1;
+  b.disabled = true;
+  try {
+    for (let i = 0; i < 80; i++) {
+      N.jl = []; N.jlm = null;
+      b.textContent = `Baixando… ${lines.length} linhas`;
+      const r = await cmd("jlog " + from, 10000);
+      if (!r.ok) { toast("Não foi possível ler o log do nó: " + r.msg + " (firmware sem o comando jlog?)"); return; }
+      lines.push(...N.jl);
+      const m = N.jlm;
+      if (!m) break;
+      if (start < 0) start = iv(m.start);
+      if (iv(m.next) >= iv(m.end) || iv(m.next) === from) break;
+      from = iv(m.next);
+    }
+    const i = N.info, id = sv(N.config.deveui) || sv(i.deveui) || "node";
+    const head = `# ${sv(i.fw)} v${sv(i.ver)} · DevEUI ${id} · log em RAM do nó (${lines.length} linhas, [hh:mm:ss] = tempo ligado)\n# baixado em ${new Date().toLocaleString()} por ${N.t ? N.t.name : "-"}\n`;
+    saveText(`radioenge_${MODE()}_${id}_${stamp()}.log`.toLowerCase(), head + lines.join("\n") + "\n");
+    toast(`${lines.length} linhas baixadas do nó.`);
+  } finally { b.textContent = "Baixar do nó"; b.disabled = !N.on; }
+}
+
+// ------------------------------------------------------------------ formulário
+const TEXT = ["deveui", "joineui", "appkey", "nwkkey", "devaddr", "nwkskey", "appskey", "netid", "interval", "port", "rstport", "rstcmd", "rstdelay", "cmdport", "txpower",
+              "rx1dl", "rx2dl", "jn1dl", "jn2dl", "nbtrials", "atport"];
+const BOOL = ["ch500", "adr", "confirmed", "rst", "extpower", "leds", "verbose", "ajoin", "dcs", "pnm"];
+const SEL = ["subband", "dr", "ping", "lowpower", "txp", "rx2dr", "baud"];
+const RESTART = ["deveui", "joineui", "appkey", "nwkkey", "devaddr", "nwkskey", "appskey", "netid", "subband", "ch500", "chmask", "njm"];
+const RX2F = [923300000, 923900000, 924500000, 925100000, 925700000, 926300000, 926900000, 927500000];
+// máscara AU915 (6 palavras de 16 bits, como o AT+CHMASK) da sub-banda escolhida
+function sbMask(sb, ch500) {
+  const m = [0, 0, 0, 0, 0, 0];
+  if (sb >= 8) { m[0] = m[1] = m[2] = m[3] = 0xFFFF; m[4] = ch500 ? 0x00FF : 0; }
+  else { m[sb >> 1] = 0x00FF << (8 * (sb & 1)); m[4] = ch500 ? 1 << sb : 0; }
+  return m.map(w => w.toString(16).padStart(4, "0")).join("");
+}
+function maskText(hex) {
+  const h = cleanHex(hex);
+  if (!/^[0-9A-F]{24}$/.test(h)) return "24 dígitos hexadecimais (ex.: 00ff:0000:0000:0000:0001:0000 = SB1, canais 8–15 e 65).";
+  const on = [];
+  for (let w = 0; w < 6; w++) { const v = parseInt(h.slice(4 * w, 4 * w + 4), 16); for (let b = 0; b < 16; b++) if (v & (1 << b)) on.push(16 * w + b); }
+  const rng = a => { const o = []; for (let i = 0; i < a.length; i++) { let j = i; while (j + 1 < a.length && a[j + 1] === a[j] + 1) j++; o.push(i === j ? `${a[i]}` : `${a[i]}–${a[j]}`); i = j; } return o.join(", "); };
+  const lo = on.filter(c => c < 64), hi = on.filter(c => c >= 64 && c < 72), bad = on.filter(c => c >= 72);
+  if (bad.length) return "Canais acima do 71 não existem no AU915.";
+  if (!on.length) return "Nenhum canal habilitado.";
+  return `${lo.length} canal(is) de 125 kHz${lo.length ? ` (${rng(lo)})` : ""}` + (hi.length ? ` + ${hi.length} de 500 kHz (${rng(hi)})` : "") +
+    (lo.length > 8 ? ". Com mais de 8 canais, o gateway precisa escutar todos." : ".");
+}
+let formLoaded = false, saving = false;
+
+function fillSelects() {
+  for (let i = 0; i <= 7; i++) $("f_subband").add(new Option(`SB${i} · canais ${i * 8}–${i * 8 + 7} + ${64 + i}`, i));
+  $("f_subband").add(new Option("Todos os canais (0–63)", 8));
+  const dr = {2: "DR2 · SF10/125 kHz · 11 bytes", 3: "DR3 · SF9/125 kHz · 53 bytes", 4: "DR4 · SF8/125 kHz", 5: "DR5 · SF7/125 kHz", 6: "DR6 · SF8/500 kHz"};
+  for (const k in dr) $("f_dr").add(new Option(dr[k], k));
+  for (let i = 0; i <= 7; i++) $("f_ping").add(new Option(`${i} · a cada ${1 << i} s`, i));
+  $("f_subband").add(new Option("Máscara personalizada", 9));
+  $("f_txp").add(new Option("Usar a potência em dBm", 255));
+  for (let i = 0; i <= 15; i++) $("f_txp").add(new Option(i === 0 ? "0 · potência máxima" : `${i} · máxima − ${2 * i} dB`, i));
+  for (const f of RX2F) $("f_rx2fq").add(new Option(`${(f / 1e6).toFixed(1)} MHz` + (f === 923300000 ? " (padrão)" : ""), f));
+  const rdr = {8: "SF12/500 kHz (padrão)", 9: "SF11/500 kHz", 10: "SF10/500 kHz", 11: "SF9/500 kHz", 12: "SF8/500 kHz", 13: "SF7/500 kHz"};
+  for (const k in rdr) $("f_rx2dr").add(new Option(`DR${k} · ${rdr[k]}`, k));
+}
+// modo de ativação mostrado no formulário (pode ser trocado por AT+NJM antes de salvar)
+const fmode = () => (formLoaded && radio("f_njm")) || MODE();
+const radio = name => { const e = document.querySelector(`input[name="${name}"]:checked`); return e ? e.value : ""; };
+const setRadio = (name, v) => document.querySelectorAll(`input[name="${name}"]`).forEach(e => e.checked = e.value === v);
+
+// prev: a configuração anterior (quando o jconfig chega de novo). Se ela mudou no nó
+// por fora (downlink de comando, AT por downlink, outro console) e o formulário não
+// tem edições, ele é refeito com os valores reais; com edições, avisa e mantém.
+function loadForm(prev) {
+  if (saving) return;
+  const ext = formLoaded && prev && cfgKey(prev) !== cfgKey(N.config);
+  if (formLoaded && !confirmReload && changes(prev || N.config).size) { $("fext").hidden = !ext && $("fext").hidden; renderDirty(); return; }
+  confirmReload = false;
+  fillForm(N.config);
+  formLoaded = true;
+  $("fext").hidden = true;
+  onForm();
+  if (ext) toast("A configuração gravada no nó mudou: formulário atualizado.");
+}
+// compara configurações sem o "dirty" (que muda sem mudar valores)
+function cfgKey(c) { const o = Object.assign({}, c); delete o.dirty; return JSON.stringify(o); }
+// jstatus: "cfgrev" muda a cada alteração da configuração no nó; mudou -> relê o jconfig.
+// Firmware sem cfgrev: compara a classe gravada (cfgcls) com a do jconfig.
+function checkCfg() {
+  const s = N.status;
+  let changed = false;
+  if ("cfgrev" in s) {
+    const r = iv(s.cfgrev);
+    changed = N.cfgRev !== undefined && r !== N.cfgRev;
+    N.cfgRev = r;
+  } else changed = !!sv(s.cfgcls) && N.config.class !== undefined && sv(s.cfgcls) !== sv(N.config.class);
+  if (!changed || !N.ready || saving || N.cfgSync) return;
+  N.cfgSync = true;
+  addLog("[página] A configuração do nó mudou: lendo de novo (jconfig).");
+  cmd("jconfig").finally(() => { N.cfgSync = false; });
+}
+function fillForm(c) {
+  setRadio("euim", bv(c.devEuiAuto) ? "auto" : "fix");
+  for (const k of TEXT) $("f_" + k).value = sv(c[k]);
+  for (const k of BOOL) $("f_" + k).checked = bv(c[k]);
+  for (const k of SEL) $("f_" + k).value = sv(c[k]);
+  setRadio("f_class", sv(c.class) || "A");
+  setRadio("f_njm", "njm" in c ? (bv(c.njm) ? "otaa" : "abp") : MODE());
+  const fq = sv(c.rx2fq);
+  if (fq && ![...$("f_rx2fq").options].some(o => o.value === fq)) $("f_rx2fq").add(new Option(`${(iv(fq) / 1e6).toFixed(3)} MHz`, fq));
+  $("f_rx2fq").value = fq;
+  $("f_chmask").value = sv(c.chmask).replace(/(.{4})(?=.)/g, "$1:");
+  const ka = sv(c.keepalive).split(":");
+  $("f_kaen").checked = ka[0] === "1"; $("f_kaport").value = ka[1] || "5"; $("f_kacfm").checked = ka[2] === "1";
+  $("f_kaper").value = ka[3] ? String(Math.round(iv(ka[3]) / 1000)) : "60";
+  $("umw").hidden = $("umhr").hidden = !("uplinkmode" in c);   // firmware sem relés/PZEM: sem o campo
+  setRadio("umode", sv(c.uplinkmode) || "0");
+  const p = sv(c.payload), hex = !printable(p);
+  setRadio("plm", hex ? "hex" : "txt");
+  $("f_payload").value = hex ? p : hexToText(p);
+}
+let confirmReload = true;
+
+function current() {
+  const m = new Map(), otaa = fmode() === "otaa", v = id => $("f_" + id).value.trim(), b = id => $("f_" + id).checked ? "1" : "0";
+  m.set("njm", otaa ? "1" : "0");
+  m.set("deveui", radio("euim") === "auto" ? "auto" : cleanHex(v("deveui")));
+  if (otaa) { for (const k of ["joineui", "appkey", "nwkkey"]) m.set(k, cleanHex(v(k))); }
+  else { for (const k of ["devaddr", "nwkskey", "appskey"]) m.set(k, cleanHex(v(k))); m.set("netid", "0x" + (cleanHex(v("netid")) || "0")); }
+  if (otaa) m.set("ajoin", b("ajoin"));
+  // máscara personalizada: só o chmask (o firmware decide se vira sub-banda); senão sub-banda + 500 kHz
+  if (v("subband") === "9") m.set("chmask", cleanHex(v("chmask")).toLowerCase());
+  else { m.set("subband", v("subband")); m.set("ch500", b("ch500")); }
+  m.set("adr", b("adr")); m.set("dr", v("dr"));
+  m.set("txp", v("txp")); if (v("txp") === "255") m.set("txpower", v("txpower"));
+  m.set("class", radio("f_class")); m.set("ping", v("ping"));
+  m.set("rx1dl", v("rx1dl")); m.set("rx2dl", v("rx2dl")); m.set("rx2fq", v("rx2fq")); m.set("rx2dr", v("rx2dr"));
+  m.set("jn1dl", v("jn1dl")); m.set("jn2dl", v("jn2dl")); m.set("pnm", b("pnm")); m.set("dcs", b("dcs"));
+  m.set("nbtrials", v("nbtrials")); m.set("atport", v("atport")); m.set("baud", v("baud"));
+  m.set("keepalive", `${b("kaen")}:${v("kaport")}:${b("kacfm")}:${Math.round(Number(v("kaper")) * 1000)}`);
+  m.set("interval", v("interval")); m.set("port", v("port")); m.set("confirmed", b("confirmed"));
+  m.set("payloadhex", radio("plm") === "hex" ? cleanHex($("f_payload").value) : textToHex($("f_payload").value));
+  m.set("rst", b("rst")); m.set("rstport", v("rstport")); m.set("rstcmd", cleanHex(v("rstcmd"))); m.set("rstdelay", v("rstdelay"));
+  m.set("cmdport", v("cmdport")); m.set("lowpower", v("lowpower")); m.set("extpower", b("extpower")); m.set("leds", b("leds"));
+  if (N.config && "verbose" in N.config) m.set("verbose", b("verbose"));   // firmware sem o campo: não manda
+  if (N.config && "uplinkmode" in N.config) m.set("uplinkmode", radio("umode"));
+  return m;
+}
+function original(c = N.config) {
+  const m = new Map(), b = k => bv(c[k]) ? "1" : "0";
+  m.set("njm", sv(c.njm));
+  m.set("deveui", bv(c.devEuiAuto) ? "auto" : sv(c.deveui));
+  m.set("chmask", sv(c.chmask).toLowerCase());
+  for (const k of ["txp", "rx1dl", "rx2dl", "rx2fq", "rx2dr", "jn1dl", "jn2dl", "nbtrials", "atport", "baud"]) m.set(k, sv(c[k]));
+  const ka = sv(c.keepalive).split(":");            // período comparado em segundos, como no formulário
+  m.set("keepalive", ka.length === 4 ? `${ka[0]}:${ka[1]}:${ka[2]}:${Math.round(iv(ka[3]) / 1000) * 1000}` : "");
+  if (fmode() === "otaa") { for (const k of ["joineui", "appkey", "nwkkey"]) m.set(k, sv(c[k])); }
+  else { for (const k of ["devaddr", "nwkskey", "appskey"]) m.set(k, sv(c[k])); m.set("netid", "0x" + sv(c.netid)); }
+  for (const k of ["subband", "dr", "txpower", "class", "ping", "interval", "port", "rstport", "rstcmd", "rstdelay", "cmdport", "lowpower"]) m.set(k, sv(c[k]));
+  for (const k of BOOL) m.set(k, b(k));
+  if ("uplinkmode" in c) m.set("uplinkmode", sv(c.uplinkmode));
+  m.set("payloadhex", sv(c.payload));
+  return m;
+}
+// "Máscara personalizada" que bate com uma sub-banda volta como sub-banda: compara pela máscara
+function sameMask(a, b) { return cleanHex(a) === cleanHex(b); }
+function normNetid(v) { return "0x" + (v.replace(/^0x/i, "").replace(/^0+/, "") || "0"); }
+function changes(base = N.config) {
+  const out = new Map();
+  if (!formLoaded) return out;
+  const cur = current(), org = original(base);
+  for (const [k, v] of cur) {
+    let a = (org.get(k) || "").toUpperCase(), b = v.toUpperCase();
+    if (k === "netid") { a = normNetid(a); b = normNetid(b); }
+    if (k === "chmask" && sameMask(a, b)) continue;
+    if (a !== b) out.set(k, v);
+  }
+  return out;
+}
+function validate() {
+  const e = [], v = id => $("f_" + id).value, num = (k, lo, hi) => { const n = Number(v(k).trim()); return v(k).trim() !== "" && Number.isInteger(n) && n >= lo && n <= hi; };
+  const bad = [];
+  const chk = (ok, id, msg) => { if (!ok) { e.push(msg); bad.push(id); } };
+  if (radio("euim") !== "auto") chk(isHex(v("deveui"), 8), "deveui", "DevEUI: 16 dígitos hexadecimais.");
+  if (fmode() === "otaa") {
+    chk(isHex(v("joineui"), 8), "joineui", "JoinEUI: 16 dígitos hexadecimais.");
+    chk(isHex(v("appkey"), 16), "appkey", "AppKey: 32 dígitos hexadecimais.");
+    chk(isHex(v("nwkkey"), 16), "nwkkey", "NwkKey: 32 dígitos hexadecimais.");
+  } else {
+    chk(isHex(v("devaddr"), 4), "devaddr", "DevAddr: 8 dígitos hexadecimais.");
+    chk(isHex(v("nwkskey"), 16), "nwkskey", "NwkSKey: 32 dígitos hexadecimais.");
+    chk(isHex(v("appskey"), 16), "appskey", "AppSKey: 32 dígitos hexadecimais.");
+    const n = cleanHex(v("netid")).replace(/^0X/, "");
+    chk(!n || /^[0-9A-F]{1,6}$/.test(n), "netid", "NetID: até 6 dígitos hexadecimais.");
+  }
+  chk(num("interval", 5, 86400), "interval", "Intervalo: 5 a 86400 s.");
+  chk(num("port", 1, 223), "port", "FPort do uplink: 1 a 223.");
+  chk(num("txpower", 2, 20), "txpower", "Potência: 2 a 20 dBm.");
+  chk(num("rstport", 1, 223), "rstport", "FPort do reset: 1 a 223.");
+  chk(num("rstdelay", 0, 60000), "rstdelay", "Espera do reset: 0 a 60000 ms.");
+  chk(num("cmdport", 0, 223), "cmdport", "FPort de comandos: 0 (desligado) a 223.");
+  chk(num("rx1dl", 1000, 15000), "rx1dl", "Atraso da RX1: 1000 a 15000 ms.");
+  chk(num("rx2dl", 1000, 16000) && Number(v("rx2dl")) > Number(v("rx1dl")), "rx2dl", "Atraso da RX2: até 16000 ms e maior que o da RX1.");
+  chk(num("jn1dl", 1000, 15000), "jn1dl", "JOIN, janela 1: 1000 a 15000 ms.");
+  chk(num("jn2dl", 1000, 16000) && Number(v("jn2dl")) > Number(v("jn1dl")), "jn2dl", "JOIN, janela 2: até 16000 ms e maior que a janela 1.");
+  chk(num("nbtrials", 0, 79), "nbtrials", "Tentativas: 0 a 79.");
+  chk(num("atport", 0, 223) && v("atport").trim() !== "4" && (Number(v("atport")) === 0 || v("atport").trim() !== v("cmdport").trim()), "atport",
+      "FPort dos comandos AT: 0 (desligado) ou 1 a 223, diferente de 4 (serial transparente) e da FPort de comandos.");
+  chk(num("kaport", 1, 223), "kaport", "FPort do keepalive: 1 a 223.");
+  chk(num("kaper", 5, 86400), "kaper", "Período do keepalive: 5 a 86400 s.");
+  if (v("subband") === "9") {
+    const h = cleanHex(v("chmask"));
+    chk(/^[0-9A-F]{24}$/.test(h) && /[1-9A-F]/.test(h) && /^[0-9A-F]{16}00[0-9A-F]{2}0000$/.test(h), "chmask",
+        "Máscara de canais: 24 dígitos hexadecimais, pelo menos um canal, só até o canal 71 (a 6ª palavra é 0000).");
+  }
+  const rc = cleanHex(v("rstcmd"));
+  chk(isHex(rc) && rc.length <= 32, "rstcmd", "Comando de reset: 1 a 16 bytes em hexadecimal.");
+  const pl = v("payload");
+  if (radio("plm") === "hex") chk((!pl.trim() || isHex(pl)) && cleanHex(pl).length <= 102, "payload", "Payload: hexadecimal de até 51 bytes.");
+  else chk(textToHex(pl).length <= 102, "payload", "Payload: até 51 bytes.");
+  document.querySelectorAll("input.bad").forEach(x => x.classList.remove("bad"));
+  bad.forEach(id => $("f_" + id).classList.add("bad"));
+  return e;
+}
+function renderDirty() {
+  const n = changes().size;
+  $("sbar").classList.toggle("chg", n > 0);
+  $("sbt").textContent = n ? `${n} alteraç${n > 1 ? "ões" : "ão"} não salva${n > 1 ? "s" : ""}` : "Sem alterações";
+  $("bsave").disabled = !n || saving; $("bdisc").disabled = !n || saving; $("bread").disabled = !N.ready || saving;
+}
+function onForm() {
+  const fm = fmode(), custom = $("f_subband").value === "9";
+  document.querySelectorAll("#act [data-m]").forEach(e => e.hidden = e.dataset.m !== fm);
+  $("njmh").textContent = formLoaded && N.config.njm !== undefined && (fm === "otaa") !== bv(N.config.njm)
+    ? `Ao salvar, o nó reinicia em ${fm.toUpperCase()}: preencha as credenciais ${fm.toUpperCase()} acima.`
+    : "Troca ABP ↔ OTAA sem regravar o firmware. Ao salvar, o nó reinicia com a outra ativação.";
+  $("f_chmask").disabled = !custom; $("f_ch500").disabled = custom;
+  if (!custom) $("f_chmask").value = sbMask(iv($("f_subband").value), $("f_ch500").checked).replace(/(.{4})(?=.)/g, "$1:");
+  $("chmh").textContent = (custom ? "" : "Máscara da sub-banda escolhida: ") + maskText($("f_chmask").value);
+  $("f_txpower").disabled = $("f_txp").value !== "255";
+  for (const k of ["kaport", "kaper", "kacfm"]) $("f_" + k).disabled = !$("f_kaen").checked;
+  renderPorts();
+  $("f_deveui").disabled = radio("euim") === "auto";
+  if ($("f_deveui").disabled && N.config.deveui) $("f_deveui").value = sv(N.config.deveui);
+  const hex = radio("plm") === "hex", t = $("f_payload").value;
+  $("f_payload").classList.toggle("m", hex);
+  const bytes = hex ? cleanHex(t).length / 2 : new TextEncoder().encode(t).length;
+  $("plh").textContent = `${Math.floor(bytes)} de 51 bytes.` + ($("f_dr").value === "2" && bytes > 11 ? " Não cabe no DR2 (11 bytes)." : "");
+  renderDirty();
+}
+function switchPayload(mode) {
+  const t = $("f_payload").value;
+  if (mode === "hex") $("f_payload").value = textToHex(t);
+  else if (isHex(t) && printable(cleanHex(t))) $("f_payload").value = hexToText(cleanHex(t));
+  else if (t.trim()) { setRadio("plm", "hex"); toast("Esse conteúdo não é texto: ficou em hexadecimal."); }
+  onForm();
+}
+async function save() {
+  const errs = validate();
+  $("ferr").hidden = !errs.length; $("ferr").textContent = errs.join("\n");
+  if (errs.length) return;
+  const ch = changes();
+  if (!ch.size) return;
+  if ([...ch.keys()].some(k => RESTART.includes(k)) &&
+      !await ask("Salvar", (ch.has("njm") ? `A ativação muda para ${fmode().toUpperCase()}: o nó reinicia e` : "Credenciais ou canais mudaram:") +
+        " a sessão LoRaWAN recomeça do zero" + (fmode() === "otaa" ? " (JOIN novo)." : "."), "Salvar")) return;
+  const newBaud = ch.has("baud") ? iv(ch.get("baud")) : 0, ser = !!(N.t && N.t.port);
+  if (newBaud && !await ask("Velocidade da serial", ser
+      ? `O console passa para ${newBaud} bps. A página reconecta sozinha na nova velocidade.`
+      : `O console passa para ${newBaud} bps. Configure o módulo Bluetooth na mesma velocidade, senão a ligação para de funcionar.`, "Salvar")) return;
+  saving = true; renderDirty();
+  const fails = [];
+  for (const [k, v] of ch) {
+    const r = await cmd(v === "" ? `set ${k}` : `set ${k} ${v}`);
+    if (!r.ok) fails.push(`${k}: ${r.msg}`);
+  }
+  let r = {ok: false, msg: ""};
+  if (!fails.length) { r = await cmd("save", 10000); if (!r.ok) fails.push("save: " + r.msg); }
+  saving = false; confirmReload = true;
+  if (!fails.length && newBaud && ser && /baud|restart/.test(r.msg)) {
+    // "baud": o nó troca logo depois do @OK; "restart": a nova velocidade vale no boot
+    if (/restart/.test(r.msg)) await sleep(1500);
+    await reopenSerial(newBaud);
+    toast(`Gravado. Serial agora em ${newBaud} bps.`); renderDirty(); return;
+  }
+  await cmd("jconfig"); await cmd("jstatus");
+  if (fails.length) { $("ferr").textContent = "Não foi possível salvar:\n" + fails.join("\n"); $("ferr").hidden = false; }
+  else toast(r.msg === "restart" ? "Gravado. O nó vai reiniciar." : "Gravado na EEPROM.");
+  renderDirty();
+}
+
+// ------------------------------------------------------------ portas em uso
+function renderPorts() {
+  const v = id => $("f_" + id).value.trim(), rows = [
+    ["2", "uplink de interrupção de GPIO (8 bytes)"],
+    ["4", "serial transparente (uplink e downlink, GPIO0/GPIO1)"],
+    ["10", "comandos do protocolo ADAILSILVA_V1 (downlink: seq | opcode | parâmetros)"],
+    ["11", "respostas do protocolo V1 (uplink: seq | opcode | status | dados)"],
+    ["20", "telemetria V1 em TLV (relés, PZEM, alimentação, boot)" + (radio("umode") === "1" ? " · uplink periódico" : "")],
+    [v("kaport") || "-", "keepalive (16 bytes)" + ($("f_kaen").checked ? "" : " · desligado")],
+    [v("port") || "-", "uplink periódico" + (radio("umode") === "1" && !$("umw").hidden ? " com payload fixo · sem uso (telemetria V1 na 20)" : "")],
+    [v("rstport") || "-", "reset remoto" + ($("f_rst").checked ? "" : " · desligado")],
+    [v("cmdport") === "0" ? "0" : v("cmdport") || "-", "comandos binários (classe, ping slot)" + (v("cmdport") === "0" ? " · desligado" : "")],
+    [v("atport") === "0" ? "0" : v("atport") || "-", "comandos AT por downlink (resposta na mesma porta)" + (v("atport") === "0" ? " · desligado" : "")]];
+  $("ptab").innerHTML = rows.map(([p, u]) => `<tr><td>${esc(p)}</td><td>${esc(u)}</td></tr>`).join("");
+}
+
+// ------------------------------------------------------------------ GPIOs
+// Os 10 GPIOs do módulo (node_io.h): pino do conector, porta do STM32 e modos permitidos.
+const GP = [[6, "PA3"], [7, "PA2"], [9, "PA15"], [10, "PA10"], [11, "PA9"], [12, "PA8"], [13, "PB15"], [14, "PA0"], [15, "PA1"], [16, "PB11"]];
+const GP_ADC = [0, 1, 7, 8], GP_IRQ = [2, 4, 5, 6, 9], GP_AF = [0, 1];
+const GP_MODE = ["Entrada digital", "Saída push-pull", "Saída open-drain", "Serial transparente", "Serial transp. open-drain",
+  "Entrada analógica", "Interrupção na subida", "Interrupção na descida", "Interrupção nas duas bordas"];
+const gpModes = g => [0, 1, 2].concat(GP_AF.includes(g) ? [3, 4] : [], GP_ADC.includes(g) ? [5] : [], GP_IRQ.includes(g) ? [6, 7, 8] : []);
+let gpBuilt = false;
+function buildGpio() {
+  const box = $("gpl");
+  GP.forEach(([pin, mcu], g) => {
+    const r = document.createElement("div");
+    r.className = "rw"; r.id = "gr" + g;
+    r.innerHTML = `<div class="pn"><b>GPIO${g}</b><small>pino ${pin} · ${mcu}${GP_ADC.includes(g) ? " · ADC" : ""}</small></div>` +
+      `<select id="gm${g}" aria-label="Modo do GPIO${g}"><option value="-1" disabled>Não configurado</option>${gpModes(g).map(m => `<option value="${m}">${m} · ${GP_MODE[m]}</option>`).join("")}</select>` +
+      `<select id="gu${g}" aria-label="Pull do GPIO${g}"><option value="0">Sem pull</option><option value="1">Pull-up</option><option value="2">Pull-down</option></select>` +
+      `<button type="button" class="s" id="ga${g}" disabled title="AT+GPIOC=${g}:modo:pull (grava na EEPROM)">Aplicar</button>` +
+      `<div class="gv" id="gv${g}">-</div>`;
+    box.appendChild(r);
+    const chg = () => { const io = N.io && N.io.g && N.io.g[g]; const d = !io || String(io[0]) !== $("gm" + g).value || String(io[1]) !== $("gu" + g).value;
+      r.classList.toggle("chg", d && $("gm" + g).value !== "-1"); $("ga" + g).disabled = !d || $("gm" + g).value === "-1"; };
+    $("gm" + g).onchange = chg; $("gu" + g).onchange = chg;
+    $("ga" + g).onclick = () => gpioApply(g);
+  });
+  gpBuilt = true;
+}
+function renderIo() {
+  const io = N.io;
+  if (!io || !Array.isArray(io.g)) return;
+  if (!gpBuilt) buildGpio();
+  const vdd = iv(N.status.vdd) || 3300, inputs = [];
+  $("gst2").className = "st " + (io.tr ? "ok" : "");
+  $("gst2").textContent = io.tr ? "Serial transparente ativa em GPIO0 (RX) e GPIO1 (TX): os bytes recebidos vão num uplink na porta 4, e o downlink na porta 4 sai por ela."
+    : bv(io.pz) ? "GPIO0 (RX) e GPIO1 (TX) estão com o PZEM-004T (Modbus). Mudar o modo de um deles aqui desliga o modo PZEM."
+    : "Mude o modo e clique em Aplicar: o pino é configurado na hora e o modo fica gravado na EEPROM (AT+GPIOC).";
+  io.g.forEach(([m, p, val], g) => {
+    const r = $("gr" + g);
+    if (!r) return;
+    const blocked = bv(io.con2) && g <= 1;
+    r.hidden = blocked;
+    const sm = $("gm" + g), su = $("gu" + g), rel = (iv(io.rel) >> g) & 1;
+    if (!r.classList.contains("chg")) { sm.value = String(m); su.value = String(p); $("ga" + g).disabled = true; }
+    sm.disabled = su.disabled = !!rel;
+    const gv = $("gv" + g);
+    if (rel) {
+      gv.innerHTML = `<span class="lv${val === 1 ? " on" : ""}"></span><small>relé · nível ${val} no pino · mude em <a href="#dev">Relés e PZEM</a></small>`;
+    } else if (g <= 1 && bv(io.pz)) {
+      gv.innerHTML = `<small>${g === 0 ? "RX" : "TX"} do PZEM-004T (Modbus 9600 8N1) · configurar este pino desliga o PZEM</small>`;
+    } else if (m === 1 || m === 2) {
+      gv.innerHTML = `<span class="lv${val === 1 ? " on" : ""}"></span><div class="seg"><label><input type="radio" name="gw${g}" value="0"${val === 0 ? " checked" : ""}><span>0</span></label><label><input type="radio" name="gw${g}" value="1"${val === 1 ? " checked" : ""}><span>1</span></label></div><small>AT+WPIN</small>`;
+      gv.querySelectorAll("input").forEach(x => x.onchange = () => gpioWrite(g, x.value));
+    } else if (m === 5) {
+      const mv = Math.round(val * vdd / 4095);
+      gv.innerHTML = val < 0 ? "-" : `<span>${val}</span><span class="ab"><i style="width:${(val / 40.95).toFixed(1)}%"></i></span><small>~${(mv / 1000).toFixed(2).replace(".", ",")} V</small>`;
+    } else if (m === 0 || m >= 6) {
+      if (val === 1) inputs.push("GPIO" + g);
+      gv.innerHTML = val < 0 ? "-" : `<span class="lv${val === 1 ? " on" : ""}"></span><span>${val}</span>${m >= 6 ? "<small>uplink na porta 2</small>" : ""}`;
+    } else if (m === 3 || m === 4) {
+      gv.innerHTML = `<small>${g === 0 ? "RX" : "TX"} da serial transparente</small>`;
+    } else gv.innerHTML = "<small>não configurado (alta impedância)</small>";
+  });
+  const bat = iv(io.bat), lvl = bat === 255 ? "sem medida" : bat === 0 ? "externa" : `~${(1.8 + (bat - 1) * 1.8 / 253).toFixed(2).replace(".", ",")} V`;
+  const cnt = m => io.g.filter(x => m.includes(x[0])).length;
+  $("kvio").innerHTML = kvHtml([
+    ["Bateria · AT+BAT", String(bat), `1 = 1,8 V … 254 = 3,6 V · ${lvl}`],
+    ["Entradas em 1", inputs.length ? inputs.join(" ") : "nenhuma", "digitais e interrupções"],
+    ["Configurados", String(io.g.filter(x => x[0] >= 0).length) + " de 10", `${cnt([1, 2])} saída(s) · ${cnt([5])} analógica(s) · ${cnt([6, 7, 8])} interrupção(ões)`],
+    ["Serial transparente", io.tr ? "ativa" : "desligada", io.tr ? `porta 4 · ${sv(N.config.baud) || "-"} bps` : "AT+GPIOC=0:3:0 liga"]]);
+  $("iomsg").textContent = `atualizado ${new Date().toLocaleTimeString()}`;
+}
+async function gpioApply(g) {
+  const m = $("gm" + g).value, p = $("gu" + g).value;
+  const r = await cmd(`AT+GPIOC=${g}:${m}:${p}`);
+  $("gr" + g).classList.remove("chg");
+  if (r.ok) toast(`GPIO${g}: ${GP_MODE[m]} (gravado).`);
+  else toast(`GPIO${g}: ${r.msg === "AT PARAM ERROR" ? "modo não permitido neste pino" + (g === 2 || g === 6 ? " (GPIO2 e GPIO6 não podem ser interrupção juntos)" : "") : r.msg}.`);
+  await cmd("jio"); cmd("jconfig");
+}
+async function gpioWrite(g, lvl) {
+  const r = await cmd(`AT+WPIN=${g}:${lvl}`);
+  if (!r.ok) toast(`GPIO${g}: ${r.msg}`);
+  cmd("jio");
+}
+
+// ------------------------------------------------------------ relés e PZEM
+// jdev -> "@DV {umode, rq, rmap, rpul, rcfg, pq, pon, pbusy, padr:[..], pz:[{ok, age, v, i, p, e, f, pf, al}], v1c, v1u, boot}"
+// (unidades do protocolo: v 0,1 V · i 0,001 A · p 0,1 W · e Wh · f 0,1 Hz · pf 0,01)
+let RE = null;              // pinos dos relés em edição: [[gpio, ativoBaixo], ...]; null = os do nó
+let PZT = false;            // campo de endereços do PZEM editado
+const BOOTN = ["desconhecido", "energização", "software (reinício pedido)", "watchdog", "queda de tensão", "pino de reset"];
+const parseRcfg = t => { t = sv(t); if (!t || t === "0") return []; const [p, a = ""] = t.split(":"), al = a.split(","); return p.split(",").map((g, i) => [iv(g), iv(al[i] || "0")]); };
+const hx2 = n => n.toString(16).padStart(2, "0").toUpperCase();
+const fmtN = (v, d) => v.toFixed(d).replace(".", ",");
+function renderDev() {
+  const d = N.dev;
+  if (!d) return;
+  const rq = iv(d.rq), map = iv(d.rmap), pul = iv(d.rpul), pq = iv(d.pq), cfg = parseRcfg(d.rcfg);
+  const padr = Array.isArray(d.padr) ? d.padr.map(iv) : [], pz = Array.isArray(d.pz) ? d.pz : [], boot = iv(d.boot);
+  const fails = pz.filter(x => bv(x.fail)).length;
+  $("dst").className = "st " + (fails ? "warn" : (rq || pq) ? "ok" : "");
+  $("dst").textContent = (rq ? `${rq} relé(s)` : "Nenhum relé") + " · " + (pq ? `${pq} medidor(es) PZEM em GPIO0/GPIO1` : "modo PZEM desligado") +
+    (fails ? ` · ${fails} medidor(es) sem resposta na última leitura (confira fiação, 5 V e endereço)` : "") + ".";
+  $("kvdev").innerHTML = kvHtml([
+    ["Relés", String(rq), rq ? `mapa ${map.toString(16).padStart(4, "0").toUpperCase()}${pul ? " · em pulso" : ""}` : "AT+RELECFG"],
+    ["PZEM-004T", String(pq), pq ? (bv(d.pon) ? "GPIO0/GPIO1 · 9600 8N1" : "serial parada") + (bv(d.pbusy) ? " · lendo…" : "") : "AT+PZEMCFG"],
+    ["Uplink periódico", iv(d.umode) === 1 ? "telemetria V1" : "payload fixo", iv(d.umode) === 1 ? "porta 20 (TLV)" : "FPort configurada"],
+    ["Protocolo V1", `${iv(d.v1c)} cmd`, `${iv(d.v1u)} uplink(s) · boot: ${BOOTN[boot] || boot}`]]);
+  // relés (não refaz a lista enquanto um campo dela estiver em uso)
+  const rl = $("rlist");
+  if (!rl.contains(document.activeElement)) {
+    rl.innerHTML = rq ? cfg.slice(0, rq).map(([g, al], ch) => {
+      const on = (map >> ch) & 1, p = (pul >> ch) & 1;
+      return `<div class="rr"><div class="rn"><b><span class="lv${on ? " on" : ""}"></span>Relé ${ch}</b><small>GPIO${g} · liga em nível ${al ? 0 : 1}${p ? " · em pulso" : ""}</small></div>` +
+        `<div class="seg"><label><input type="radio" name="rs${ch}" value="0"${on ? "" : " checked"}><span>Desligado</span></label><label><input type="radio" name="rs${ch}" value="1"${on ? " checked" : ""}><span>Ligado</span></label></div>` +
+        `<div class="pu"><input type="number" id="rp${ch}" min="100" max="86400000" placeholder="ms" aria-label="Duração do pulso do relé ${ch} (ms)"><button type="button" class="s" data-rp="${ch}" title="AT+RELEPULSO=${ch}:${on ? 0 : 1}:ms">Pulso</button></div></div>`;
+    }).join("") : `<p class="hint" style="margin:0">Nenhum relé configurado: adicione abaixo.</p>`;
+    rl.querySelectorAll("input[type=radio]").forEach(x => x.onchange = () => relayCmd(`AT+RELE=${x.name.slice(2)}:${x.value}`, `Relé ${x.name.slice(2)} ${x.value === "1" ? "ligado" : "desligado"}.`));
+    rl.querySelectorAll("button[data-rp]").forEach(b => b.onclick = () => relayPulse(iv(b.dataset.rp)));
+  }
+  $("rall").hidden = !rq;
+  if (RE === null) renderRcfg(cfg);
+  if (!PZT && document.activeElement !== $("pzadr")) $("pzadr").value = padr.map(a => a.toString(16).padStart(2, "0")).join(",");
+  $("pzoff").disabled = $("pzread").disabled = !pq;
+  $("pzl").innerHTML = pz.slice(0, pq).map((m, ch) => {
+    const head = `<div class="pzh">PZEM ${ch}<small>endereço ${padr[ch] !== undefined ? hx2(padr[ch]) : "-"}${bv(m.ok) ? ` · leitura de há ${iv(m.age)} s` : ""}</small></div>`;
+    if (!bv(m.ok)) return head + `<div class="st ${bv(m.fail) ? "warn" : ""}" style="margin:0">${bv(m.fail) ? "Sem resposta na última leitura (FALHA_PERIFERICO): confira a fiação, o 5 V do PZEM e o endereço." : "Sem leitura ainda: clique em Ler agora."}</div>`;
+    return head + `<div class="kv">` + kvHtml([
+      ["Tensão", `${fmtN(iv(m.v) / 10, 1)} V`, ""], ["Corrente", `${fmtN(iv(m.i) / 1000, 3)} A`, ""], ["Potência", `${fmtN(iv(m.p) / 10, 1)} W`, ""],
+      ["Energia", `${iv(m.e)} Wh`, `${fmtN(iv(m.e) / 1000, 3)} kWh`], ["Frequência", `${fmtN(iv(m.f) / 10, 1)} Hz`, ""],
+      ["Fator de potência", fmtN(iv(m.pf) / 100, 2), ""], ["Alarme de potência", bv(m.al) ? "sim" : "não", "AT+PZEMLIM"]]) + `</div>`;
+  }).join("");
+}
+function renderRcfg(list) {
+  const pq = N.dev ? iv(N.dev.pq) : 0, tr = N.io && bv(N.io.tr);
+  const pins = [...Array(10).keys()].filter(g => g > 1 || (!pq && !tr));
+  $("rcfg").innerHTML = list.length ? list.map(([g, al], i) =>
+    `<div class="rcr"><span>Relé ${i}</span>` +
+    `<select data-ri="${i}" data-rk="0" aria-label="GPIO do relé ${i}">${pins.concat(pins.includes(g) ? [] : [g]).map(x => `<option value="${x}"${x === g ? " selected" : ""}>GPIO${x}</option>`).join("")}</select>` +
+    `<select data-ri="${i}" data-rk="1" aria-label="Nível que liga o relé ${i}"><option value="1"${al ? " selected" : ""}>Liga em nível 0</option><option value="0"${al ? "" : " selected"}>Liga em nível 1</option></select>` +
+    `<button type="button" class="s" data-rx="${i}" title="Remover o relé ${i}">Remover</button></div>`).join("")
+    : `<p class="hint" style="margin:0">Sem relés. <b>Adicionar relé</b> cria o relé 0.</p>`;
+  $("rcfg").querySelectorAll("select").forEach(e => e.onchange = () => { reEdit()[iv(e.dataset.ri)][iv(e.dataset.rk)] = iv(e.value); rcfgDirty(); });
+  $("rcfg").querySelectorAll("button[data-rx]").forEach(b => b.onclick = () => { reEdit().splice(iv(b.dataset.rx), 1); renderRcfg(RE); rcfgDirty(); });
+  $("radd").disabled = list.length >= 8;
+}
+const reEdit = () => { if (RE === null) RE = parseRcfg(N.dev && N.dev.rcfg); return RE; };
+function rcfgDirty() { $("rapl").disabled = RE === null; $("rdsc").hidden = RE === null; $("rmsg").textContent = RE === null ? "" : "alterações não aplicadas"; }
+async function relayCmd(c, ok) {
+  const r = await cmd(c);
+  toast(r.ok ? ok : `${c}: ${r.msg}`);
+  await cmd("jdev"); cmd("jio");
+}
+async function relayPulse(ch) {
+  const ms = iv($("rp" + ch).value), on = (iv(N.dev.rmap) >> ch) & 1;
+  if (ms < 100 || ms > 86400000) { $("rp" + ch).classList.add("bad"); toast("Duração do pulso: 100 a 86400000 ms."); return; }
+  $("rp" + ch).classList.remove("bad");
+  $("rp" + ch).blur();
+  await relayCmd(`AT+RELEPULSO=${ch}:${on ? 0 : 1}:${ms}`, `Relé ${ch} ${on ? "desligado" : "ligado"} por ${ms} ms.`);
+}
+async function relayApply() {
+  const list = RE || [], pins = list.map(x => x[0]);
+  if (new Set(pins).size !== pins.length) { toast("Cada relé precisa de um GPIO diferente."); return; }
+  const c = list.length ? `AT+RELECFG=${pins.join(",")}:${list.map(x => x[1]).join(",")}` : "AT+RELECFG=0";
+  const r = await cmd(c);
+  if (r.ok) { RE = null; rcfgDirty(); toast(list.length ? `${list.length} relé(s) configurado(s) (gravado).` : "Relés removidos (gravado)."); }
+  else { $("rmsg").textContent = r.msg; toast(`${c}: ${r.msg}`); }
+  await cmd("jdev"); await cmd("jio"); cmd("jconfig");
+}
+async function pzemApply(off) {
+  const a = $("pzadr").value.trim().toLowerCase().replace(/\s+/g, "");
+  if (!off && !/^[0-9a-f]{1,2}(,[0-9a-f]{1,2}){0,3}$/.test(a)) { $("pzadr").classList.add("bad"); toast("Endereços em hexadecimal separados por vírgula (ex.: f8 ou 01,02)."); return; }
+  $("pzadr").classList.remove("bad");
+  const r = await cmd(off ? "AT+PZEMCFG=0" : `AT+PZEMCFG=${a}`);
+  $("pzmsg").textContent = r.ok ? (off ? "modo PZEM desligado" : "gravado") : r.msg;
+  toast(r.ok ? (off ? "Modo PZEM desligado: GPIO0/GPIO1 livres." : "PZEM em GPIO0/GPIO1 (gravado).") : `AT+PZEMCFG: ${r.msg}`);
+  if (r.ok) PZT = false;
+  await cmd("jdev"); await cmd("jio"); cmd("jconfig");
+}
+async function pzemRead() {
+  $("pzmsg").textContent = "lendo…";
+  const r = await cmd("pzem ler");
+  if (!r.ok) { $("pzmsg").textContent = r.msg; return; }
+  await new Promise(res => setTimeout(res, 600 * (iv(N.dev && N.dev.pq) + 1)));   // até 0,5 s por medidor
+  await cmd("jdev");
+  $("pzmsg").textContent = `lido às ${new Date().toLocaleTimeString()}`;
+}
+
+// ------------------------------------------------------------ chaves de sessão
+// DevAddr, NwkSKey e AppSKey da sessão em uso (jkeys), ocultas
+// até clicar em Mostrar. No OTAA são derivadas da AppKey a cada JOIN aceito.
+let SKV = false;
+const durTxt = t => t < 60 ? `${t} s` : t < 3600 ? `${Math.floor(t / 60)} min ${t % 60} s`
+  : t < 86400 ? `${Math.floor(t / 3600)} h ${Math.floor(t / 60) % 60} min` : `${Math.floor(t / 86400)} d ${Math.floor(t / 3600) % 24} h`;
+function renderKeys() {
+  const k = N.keys || {}, ok = bv(k.valid), otaa = isOtaa();
+  $("sk").hidden = !("valid" in k);
+  $("sk_s").textContent = otaa
+    ? (ok ? (bv(k.restored) ? `Restauradas da EEPROM no boot, há ${durTxt(iv(k.age))} · renovadas a cada novo JOIN`
+                            : `Derivadas da AppKey no JOIN aceito há ${durTxt(iv(k.age))} · renovadas a cada novo JOIN`)
+          : "Sem sessão: são derivadas quando o JOIN for aceito (e renovadas a cada novo JOIN)")
+    : (ok ? "Configuradas manualmente em Ativação ABP · fixas até você alterá-las" : "Sessão ABP ainda não ativada");
+  $("sk_da").textContent = ok ? sv(k.devaddr) : "-";
+  for (const n of ["nwk", "app"]) $("sk_" + n).textContent = !ok ? "-" : SKV ? sv(k[n]) : "•••••••••••••••• (oculta)";
+  document.querySelectorAll("#sk button[data-k]").forEach(b => b.disabled = !ok);
+  $("sk_b").textContent = SKV ? "Ocultar" : "Mostrar";
+  $("sk_b").disabled = !ok;
+}
+async function copyKey(n) {
+  const k = N.keys || {}, v = n === "da" ? sv(k.devaddr) : sv(k[n]);
+  const name = n === "da" ? "DevAddr" : n === "nwk" ? "NwkSKey" : "AppSKey", done = name + (n === "da" ? " copiado." : " copiada.");
+  if (!v) return;
+  try { await navigator.clipboard.writeText(v); $("amsg").textContent = done; return; } catch (e) { /* sem permissão: tenta o modo antigo */ }
+  const t = document.createElement("textarea");
+  t.value = v; t.style.position = "fixed"; t.style.opacity = "0"; document.body.appendChild(t); t.select();
+  let ok = false; try { ok = document.execCommand("copy"); } catch (e) {}
+  t.remove();
+  if (ok) $("amsg").textContent = done; else window.prompt(`Copie ${n === "da" ? "o" : "a"} ${name}:`, v);
+}
+
+// Botão "Copiar" de qualquer campo em hexadecimal: copia sem espaços/separadores, em
+// maiúsculas (como o ChirpStack mostra). O payload em modo Texto é copiado como está.
+function flashBtn(b, txt) {
+  if (!b) return;
+  if (b._t == null) b._t = b.textContent;
+  b.textContent = txt; clearTimeout(b._h); b._h = setTimeout(() => { b.textContent = b._t; }, 1500);
+}
+async function copyText(b, v, name) {
+  v = (v || "").trim();
+  const done = b && b.dataset.ok ? b.dataset.ok : "Copiado ✓";
+  if (!v || v === "-") { flashBtn(b, b && b.dataset.ok ? "–" : "Vazio"); return; }
+  try { await navigator.clipboard.writeText(v); flashBtn(b, done); return; } catch (e) { /* sem permissão: tenta o modo antigo */ }
+  const t = document.createElement("textarea");
+  t.value = v; t.setAttribute("readonly", ""); t.style.position = "fixed"; t.style.opacity = "0"; document.body.appendChild(t); t.select();
+  let ok = false; try { ok = document.execCommand("copy"); } catch (e) {}
+  t.remove();
+  if (ok) flashBtn(b, done); else window.prompt(`Copie ${name}:`, v);
+}
+function copyField(b) {
+  const id = b.dataset.cp, raw = $("f_" + id).value.trim();
+  const hex = id !== "payload" || radio("plm") === "hex";
+  const h = cleanHex(raw.replace(/^0x/i, ""));
+  copyText(b, hex && isHex(h) ? h : raw, b.dataset.cpn);
+}
+
+// ------------------------------------------------------------- manutenção
+// Exporta a configuração gravada no nó (jconfig) num
+// JSON; importar só preenche o formulário, e o usuário salva com "Salvar no nó".
+const MODE = () => (isOtaa() ? "otaa" : "abp");
+async function exportCfg() {
+  if (!N.ready) { toast("Conecte o nó primeiro."); return; }
+  const r = await cmd("jconfig");
+  if (!r.ok || !Object.keys(N.config).length) { toast("Não foi possível ler a configuração do nó."); return; }
+  const i = N.info, j = Object.assign({
+    _mode: MODE(), _fw: sv(i.fw), _ver: sv(i.ver), _stack: sv(i.stack), _mcu: sv(i.mcu), _radio: sv(i.radio),
+    _region: sv(i.region), _deveui: sv(N.config.deveui) || sv(i.deveui), _exported: new Date().toISOString()
+  }, N.config);
+  delete j.dirty;
+  const d = new Date(), p = n => ("0" + n).slice(-2), a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(j, null, 2)], {type: "application/json"}));
+  a.download = `radioenge_${MODE()}_${sv(N.config.deveui) || sv(i.deveui) || "node"}_${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}.json`.toLowerCase();
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+function importCfg(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const rd = new FileReader();
+  rd.onload = async () => {
+    input.value = "";
+    let j;
+    try { j = JSON.parse(rd.result); } catch (e) { j = null; }
+    if (!j || typeof j !== "object" || Array.isArray(j)) { toast("Arquivo JSON inválido."); return; }
+    // Arquivos exportados pelos antigos firmwares separados (só ABP ou só OTAA) não têm
+    // o "njm": a ativação vem do "_mode", para o nó continuar na mesma ativação.
+    if (!("njm" in j) && (j._mode === "abp" || j._mode === "otaa")) j.njm = j._mode === "otaa" ? 1 : 0;
+    const fm = "njm" in j ? (bv(j.njm) ? "otaa" : "abp") : MODE();
+    if (fm !== MODE() &&
+        !await ask("Importar", `Este arquivo é de um nó em ${fm.toUpperCase()} e este nó está em ${MODE().toUpperCase()}. ` +
+          `Importar mesmo assim? A ativação do formulário muda para ${fm.toUpperCase()} (AT+NJM) e, ao salvar, o nó reinicia nela.`, "Importar")) return;
+    const c = Object.assign({}, N.config);
+    for (const k of Object.keys(j)) if (k[0] !== "_" && k !== "dirty") c[k] = j[k];
+    fillForm(c);
+    formLoaded = true;
+    onForm();
+    validate();
+    toast("Configuração carregada no formulário. Revise e clique em Salvar no nó.");
+  };
+  rd.readAsText(file);
+}
+
+
+// ------------------------------------------------------------- diagnósticos
+// O módulo Radioenge não tem rede IP: Ping, Traceroute e Nslookup rodam NESTE
+// COMPUTADOR. Com o servidor local (sh scripts/build.sh web) a página usa a
+// API GET diag_run?t=ping|trace|dns&h=<host> (texto linha a linha) e
+// os programas do sistema. Sem ele (GitHub Pages) o navegador não manda ICMP:
+// Nslookup por DNS-over-HTTPS e Ping pela ida e volta de um pedido HTTPS.
+// O Autoteste roda no firmware do nó (jdiag).
+const D = {local: undefined, busy: false, ac: null};
+const HOST_OK = h => /^[A-Za-z0-9._:-]{1,63}$/.test(h) && !h.startsWith("-");
+const isIPv4 = h => /^\d{1,3}(\.\d{1,3}){3}$/.test(h);
+async function probeLocal() {
+  D.local = null;
+  // 1º a própria origem (aberta pelo build.sh web); depois o servidor local na porta
+  // 8101, para a página aberta direto do disco (file://) ou pelo GitHub Pages.
+  const bases = (location.protocol.startsWith("http") ? [""] : []).concat(["http://127.0.0.1:8101/"]);
+  for (const base of bases) {
+    try {
+      const r = await fetch(base + "diag_info", {cache: "no-store"});
+      const j = r.ok ? await r.json() : null;
+      if (j && j.local) { D.local = j; D.base = base; break; }
+    } catch (e) { /* sem servidor local aqui */ }
+  }
+  const L = D.local;
+  $("dwhere").innerHTML = L
+    ? `Ping, Traceroute e Nslookup rodam <b>neste computador</b> (${esc(L.os)}${L.host ? " · " + esc(L.host) : ""}), pelo servidor local do <code>scripts/build.sh web</code>, com o ICMP do sistema e a mesma saída da página de diagnósticos dos nós e gateways ESP32: o módulo Radioenge não tem rede IP. O <b>Autoteste do nó</b> roda no firmware (comando <code>diag</code>): rádio, EEPROM, sessão, tráfego, relógio, VDD e RAM.`
+    : `<b>Servidor local não encontrado.</b> O navegador não envia ICMP, então <b>Ping</b> e <b>Traceroute</b> precisam dele: rode <code>sh scripts/build.sh web</code> (ele fica em <code>http://127.0.0.1:8101</code>) e clique de novo, mesmo com esta página aberta direto do disco. Sem ele, o <b>Nslookup</b> usa DNS-over-HTTPS (dns.google). O <b>Autoteste do nó</b> roda no firmware (comando <code>diag</code>).`;
+  $("dhint").textContent = L ? "Os testes usam a rede deste computador (ping ~5 s, traceroute até ~15 s)."
+    : "Ping e Traceroute precisam do servidor local (sh scripts/build.sh web).";
+}
+function dpaint(t) {
+  const o = $("dout");
+  o.innerHTML = t.split("\n").map(l => {
+    const c = /\[FALHA\]/.test(l) ? "e" : /\[AVISO\]/.test(l) ? "w" : /\[ ok \]/.test(l) ? "o" : /\[info\]/.test(l) ? ""
+      : /não |sem resposta|erro|\*\*\*|!\w?$|\s\*$|timed out|100% packet loss|unreachable|unknown host|not known/i.test(l) ? "e"
+      : / (time|tempo)[=<]|^(Address|Endereço):|bytes from/i.test(l) ? "o" : "";
+    return c ? `<span class="${c}">${esc(l)}</span>` : esc(l);
+  }).join("\n");
+  o.scrollTop = o.scrollHeight;
+}
+function dbusy(b) {
+  D.busy = b;
+  document.querySelectorAll("#vdiag button.t").forEach(x => x.disabled = b || (x.id === "bself" && !N.on));
+  $("dh").disabled = b; $("dstop").hidden = !b;
+}
+const sleep = (ms, sig) => new Promise(res => { const t = setTimeout(res, ms); if (sig) sig.addEventListener("abort", () => { clearTimeout(t); res(); }); });
+async function dohJson(name, type, sig) {
+  const r = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(name)}&type=${type}`, {cache: "no-store", signal: sig});
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  return r.json();
+}
+async function browserDns(h, out, sig) {
+  const t0 = performance.now();
+  out("Servidor:\tdns.google (DNS-over-HTTPS, pelo navegador)\n\n");
+  if (isIPv4(h)) {
+    const j = await dohJson(h.split(".").reverse().join(".") + ".in-addr.arpa", "PTR", sig);
+    const a = (j.Answer || []).filter(x => x.type === 12);
+    if (a.length) a.forEach(x => out(`${h}\tnome = ${x.data}\n`)); else out(`*** ${h} não tem nome reverso (PTR)\n`);
+  } else if (h.includes(":")) {
+    out(`${h} é um endereço IPv6: a consulta reversa não é feita pelo navegador\n`);
+  } else {
+    out(`Nome:\t\t${h}\n`);
+    let n = 0;
+    for (const type of ["A", "AAAA"]) {
+      const j = await dohJson(h, type, sig);
+      for (const x of j.Answer || []) {
+        if (x.type === 5) out(`Apelido:\t${x.data}\n`);
+        if (x.type === 1 || x.type === 28) { out(`Endereço:\t${x.data}\n`); n++; }
+      }
+    }
+    if (!n) out(`*** não foi possível resolver ${h} (sem resposta ou nome inexistente)\n`);
+  }
+  out(`\n(${Math.round(performance.now() - t0)} ms)\n`);
+}
+async function selfTest(out) {
+  const t0 = performance.now();
+  N.diag = null;
+  const r = await cmd("jdiag", 10000);
+  const ms = Math.round(performance.now() - t0), d = N.diag;
+  if (!r.ok || !d) { out(`*** o nó não respondeu ao autoteste: ${r.msg || "sem resposta"} (firmware sem o comando jdiag?)\n`); return; }
+  const tag = {ok: "[ ok ]", aviso: "[AVISO]", falha: "[FALHA]", info: "[info]"};
+  out(`Autoteste do nó · ${sv(N.info.fw)} v${sv(N.info.ver)} · ${N.t ? N.t.name : ""}\n\n`);
+  for (const it of d.items || []) out(`${(tag[it.l] || "[info]").padEnd(7)} ${(sv(it.n) + " ").padEnd(23, ".")} ${sv(it.v)}\n`);
+  out(`\nResultado: ${iv(d.ok)} ok · ${iv(d.warn)} aviso(s) · ${iv(d.fail)} falha(s) · resposta do console em ${ms} ms\n`);
+}
+async function drun(t) {
+  const h = $("dh").value.trim();
+  if (t !== "self" && !HOST_OK(h)) { $("dst").textContent = "destino inválido"; $("dh").focus(); return; }
+  if (t === "self" && !N.ready) { $("dst").textContent = "conecte o nó primeiro"; return; }
+  if (!D.local) await probeLocal();          // o servidor pode ter sido aberto depois da página
+  let txt = "";
+  const out = x => { txt += x; dpaint(txt); }, t0 = Date.now();
+  D.ac = new AbortController();
+  const sig = D.ac.signal;
+  dbusy(true); $("dout").textContent = ""; $("dst").textContent = "executando…";
+  try {
+    if (t === "self") await selfTest(out);
+    else if (D.local) {
+      const r = await fetch(`${D.base || ""}diag_run?t=${t}&h=${encodeURIComponent(h)}`, {cache: "no-store", signal: sig});
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const rd = r.body.getReader(), dec = new TextDecoder();
+      for (;;) { const c = await rd.read(); if (c.done) break; out(dec.decode(c.value, {stream: true})); }
+    }
+    else if (t === "dns") await browserDns(h, out, sig);
+    else out(`${t === "ping" ? "ping" : "traceroute"}: o navegador não envia ICMP e o servidor local não respondeu em http://127.0.0.1:8101.\n` +
+             `Rode "sh scripts/build.sh web" na pasta do projeto (Windows: python scripts\\web_server.py) e clique em ${t === "ping" ? "Ping" : "Traceroute"} de novo:\n` +
+             `o ${t === "ping" ? "ping" : "traceroute"} sai deste computador, com o ICMP do sistema (o mesmo resultado do terminal).\n`);
+    $("dst").textContent = sig.aborted ? "interrompido" : `concluído em ${((Date.now() - t0) / 1000).toFixed(1)} s`;
+  } catch (e) {
+    $("dst").textContent = e && e.name === "AbortError" ? "interrompido" : "falhou: " + (e && e.message || e);
+  } finally { dbusy(false); D.ac = null; }
+}
+
+// ------------------------------------------------------------------ ações
+// "Ler do nó": pede a configuração gravada de novo e refaz o formulário com ela
+async function readFromNode() {
+  if (!N.ready || saving) return;
+  if (changes().size && !await ask("Ler do nó", "Descartar as alterações não salvas e ler a configuração gravada no nó?")) return;
+  confirmReload = true;
+  const r = await cmd("jconfig");
+  if (!r.ok) { confirmReload = false; toast("Erro: " + r.msg); return; }
+  $("ferr").hidden = true; $("fext").hidden = true; document.querySelectorAll("input.bad").forEach(x => x.classList.remove("bad"));
+  cmd("jstatus");
+  toast("Configuração lida do nó.");
+}
+async function act(line, okText) {
+  const r = await cmd(line);
+  toast(r.ok ? okText : "Erro: " + r.msg);
+  cmd("jstatus");
+  return r.ok;
+}
+async function sendNow() {
+  const t = $("sendp").value, hex = radio("sxm") === "hex", port = $("sendport").value.trim(), cfm = $("sendcfm").checked, tr = $("sendtr").value.trim();
+  if (hex && t && !isHex(t)) { toast("Hexadecimal inválido."); return; }
+  if (!port && !cfm) {
+    if (!t) return act("send", "Uplink do payload configurado na fila.");
+    return act(hex ? "send hex:" + cleanHex(t) : "send " + t, "Uplink na fila.");
+  }
+  // FPort ou confirmado: os comandos do firmware original (AT+SENDB / AT+TXBCFM)
+  const fp = port || sv(N.config.port) || "1";
+  if (!(iv(fp) >= 1 && iv(fp) <= 223)) { toast("FPort: 1 a 223."); return; }
+  const n = tr || String(Math.min(15, Math.max(1, iv(N.config.nbtrials) || 8)));
+  if (cfm && !(iv(n) >= 1 && iv(n) <= 15)) { toast("Tentativas: 1 a 15."); return; }
+  const data = (t ? (hex ? cleanHex(t) : textToHex(t)) : sv(N.config.payload)).toLowerCase();
+  if (!data) { toast("Escreva o payload (o configurado está vazio)."); return; }
+  const line = cfm ? `AT+TXBCFM=${fp}:1:${n}:${data}` : `AT+SENDB=${fp}:${data}`;
+  const r = await cmd(line, 10000);
+  toast(r.ok ? `${r.at || "AT TX OK"} · porta ${fp}${cfm ? " · confirmado: AT ACK OK/ERROR aparece nos Logs" : ""}` : "Erro: " + r.msg);
+  cmd("jstatus");
+}
+
+// ------------------------------------------------------------------ eventos
+function init() {
+  fillSelects();
+  if (!window.isSecureContext) {
+    $("nosec").innerHTML = "Esta página precisa ser aberta por <b>https://</b> ou por <b>http://localhost</b> para usar a porta serial e o Bluetooth. Rode <code>sh scripts/build.sh web</code> na pasta do projeto e abra o endereço que ele mostrar.";
+    $("nosec").hidden = false;
+  }
+  if (!("serial" in navigator)) { $("bser").disabled = true; $("nser").hidden = false; }
+  if (!("bluetooth" in navigator)) { $("bble").disabled = true; $("nble").hidden = false; }
+  $("bser").onclick = () => connect("serial");
+  $("bble").onclick = () => connect("ble");
+  $("bdis").onclick = disconnect;
+  document.querySelectorAll("[data-f]").forEach(e => e.addEventListener(e.type === "text" || e.type === "number" ? "input" : "change", ev => {
+    if (ev.target.name === "plm") switchPayload(ev.target.value); else onForm();
+  }));
+  $("bsave").onclick = save;
+  $("bread").onclick = readFromNode;
+  $("bdisc").onclick = () => { confirmReload = true; loadForm(); $("ferr").hidden = true; document.querySelectorAll("input.bad").forEach(x => x.classList.remove("bad")); };
+  $("bsend").onclick = sendNow;
+  $("bior").onclick = () => { if (N.ready) cmd("jio"); };
+  $("ron").onclick = () => relayCmd("AT+RELE=255:1", "Todos os relés ligados.");
+  $("roff").onclick = () => relayCmd("AT+RELE=255:0", "Todos os relés desligados.");
+  $("radd").onclick = () => {
+    const l = reEdit(), used = new Set(l.map(x => x[0])), pq = N.dev ? iv(N.dev.pq) : 0;
+    const g = [2, 3, 4, 5, 6, 7, 8, 9, 0, 1].find(x => !used.has(x) && (x > 1 || !pq));
+    if (g === undefined || l.length >= 8) return;
+    l.push([g, 1]); renderRcfg(RE); rcfgDirty();
+  };
+  $("rapl").onclick = relayApply;
+  $("rdsc").onclick = () => { RE = null; rcfgDirty(); if (N.dev) renderRcfg(parseRcfg(N.dev.rcfg)); };
+  $("pzapl").onclick = () => pzemApply(false);
+  $("pzoff").onclick = async () => { if (await ask("Desligar PZEM", "Desligar o modo PZEM? GPIO0 e GPIO1 ficam livres (alta impedância) e a telemetria deixa de trazer as medições.", "Desligar")) pzemApply(true); };
+  $("pzread").onclick = pzemRead;
+  $("pzadr").oninput = () => { PZT = true; };
+  $("pzadr").onkeydown = e => { if (e.key === "Enter") pzemApply(false); };
+  $("sendp").onkeydown = e => { if (e.key === "Enter") sendNow(); };
+  document.querySelectorAll("[data-cls]").forEach(b => b.onclick = () => act("class " + b.dataset.cls, `Classe ${b.dataset.cls} pedida.`));
+  $("bjoin").onclick = async () => { if (await ask(isOtaa() ? "Refazer JOIN" : "Reativar sessão", isOtaa() ? "Fazer um novo JOIN agora?" : "Reativar a sessão ABP agora?")) act("join", isOtaa() ? "JOIN pedido." : "Sessão reativada."); };
+  $("bdt").onclick = () => act("devtime", "DeviceTimeReq no próximo uplink.");
+  $("brecal").onclick = () => act("clock recal", "Relógio medido de novo.");
+  $("breb").onclick = async () => { if (await ask("Reiniciar", "Reiniciar o nó agora?", "Reiniciar")) act("reboot", "Reiniciando…"); };
+  $("bsnow").onclick = async () => {
+    $("amsg").textContent = "Pedindo o uplink…";
+    const r = await cmd("send");
+    $("amsg").textContent = r.ok ? "Uplink na fila: a frequência aparece nos Logs ([TX]) e em Próximo envio." : "Erro: " + r.msg;
+    cmd("jstatus");
+  };
+  $("bsjoin").onclick = async () => {
+    const otaa = isOtaa();
+    if (!await ask(otaa ? "Refazer JOIN" : "Reativar sessão ABP",
+      otaa ? "Refazer o JOIN agora? O nó deixa de transmitir até o servidor responder." : "Reativar a sessão ABP agora? O nó reaplica o DevAddr e as chaves gravados.",
+      otaa ? "Refazer JOIN" : "Reativar")) return;
+    $("amsg").textContent = otaa ? "Pedindo o JOIN…" : "Reativando…";
+    const r = await cmd("join");
+    $("amsg").textContent = r.ok ? (otaa ? "Refazendo o JOIN." : "Sessão ABP reativada.") : "Erro: " + r.msg;
+    cmd("jstatus");
+  };
+  $("sk_b").onclick = () => { SKV = !SKV; renderKeys(); };
+  document.querySelectorAll("#sk button[data-k]").forEach(b => b.onclick = () => copyKey(b.dataset.k));
+  document.querySelectorAll("button[data-cp]").forEach(b => b.onclick = () => copyField(b));
+  $("ccid").onclick = () => copyText($("ccid"), $("cid").textContent, $("cidl").textContent);
+  $("bexp").onclick = exportCfg;
+  $("bimp").onclick = () => $("impf").click();
+  $("impf").onchange = () => importCfg($("impf"));
+  $("bfac").onclick = async () => {
+    const r = await ask("Restaurar padrão de fábrica", "Apagar toda a configuração salva e voltar aos valores de fábrica (node_build.h)? A sessão LoRaWAN é apagada e o nó reinicia. Se quiser guardar a configuração atual, use Exportar antes.", "Restaurar", isOtaa());
+    if (r) act(r.nonce ? "factory nonce" : "factory", "Restaurando… o nó vai reiniciar.");
+  };
+  $("lfil").oninput = () => renderLog(true);
+  $("bpause").onclick = () => { N.paused = !N.paused; $("bpause").textContent = N.paused ? "Continuar" : "Pausar"; if (N.paused) $("lst").textContent = "pausado"; else renderLog(true); };
+  $("bclr").onclick = () => { N.log = []; renderLog(true); };
+  $("lauto").onchange = () => { if ($("lauto").checked) $("term").scrollTop = $("term").scrollHeight; };
+  $("bnlog").onclick = downloadNodeLog;
+  $("bslog").onclick = () => {
+    if (!N.log.length) { toast("Nada recebido ainda."); return; }
+    saveText(`radioenge_${MODE()}_sessao_${stamp()}.log`, N.log.join("\n") + "\n");
+  };
+  document.querySelectorAll("#vdiag button.t").forEach(b => b.onclick = () => drun(b.dataset.t));
+  $("dstop").onclick = () => { if (D.ac) D.ac.abort(); };
+  $("dh").onkeydown = e => { if (e.key === "Enter") { e.preventDefault(); drun("ping"); } };
+  window.addEventListener("hashchange", route);
+  const runCmd = async () => {
+    const t = $("cmdl").value.trim();
+    if (!t) return;
+    if (t === "mode human") { toast("A página precisa do modo app: use um terminal serial para o modo humano."); return; }
+    $("cmdl").value = "";
+    addLog("> " + t);
+    const r = await cmd(t);
+    if (!r.ok) toast("Erro: " + r.msg);
+  };
+  $("bcmd").onclick = runCmd;
+  $("cmdl").onkeydown = e => { if (e.key === "Enter") runCmd(); };
+  window.addEventListener("beforeunload", e => { if (changes().size) { e.preventDefault(); e.returnValue = ""; } });
+  // menu lateral: destaca a seção visível
+  const links = [...document.querySelectorAll(".side a")];
+  const io = new IntersectionObserver(es => es.forEach(en => { if (en.isIntersecting) links.forEach(a => a.classList.toggle("on", a.getAttribute("href") === "#" + en.target.id)); }), {rootMargin: "-30% 0px -60% 0px"});
+  document.querySelectorAll("main .sec").forEach(s => io.observe(s));
+  route();
+}
+init();
+</script>
+</body>
+</html>

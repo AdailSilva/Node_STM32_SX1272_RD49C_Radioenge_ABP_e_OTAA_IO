@@ -1,0 +1,32 @@
+name: radioenge_node_atuadores_sensores_app
+description: App Android do nó LoRaWAN Radioenge com relés e PZEM-004T (console da UART por USB OTG ou Bluetooth BLE).
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.5.0 <4.0.0'
+  flutter: '>=3.24.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  # adaptador USB-serial (CP210x, CH34x, FTDI, PL2303) pelo USB OTG
+  usb_serial: ^0.5.2
+  # Bluetooth Low Energy (Nordic UART / HM-10)
+  flutter_blue_plus: '>=1.34.5 <1.36.0'
+  # permissões do Bluetooth no Android 12+
+  permission_handler: ^11.3.1
+  # link do desenvolvedor
+  url_launcher: ^6.3.0
+  # exportar/importar configuração e baixar logs
+  file_picker: ^10.3.10
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: '>=4.0.0 <7.0.0'
+
+flutter:
+  uses-material-design: true

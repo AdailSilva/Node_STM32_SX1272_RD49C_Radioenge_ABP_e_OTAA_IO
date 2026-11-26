@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 840" font-family="DejaVu Sans, Segoe UI, Roboto, Arial, sans-serif">
+  <rect width="1200" height="840" fill="#ffffff"/>
+  <text x="600" y="42" text-anchor="middle" font-size="26" font-weight="700" fill="#14211d">Módulo LoRaWAN Radioenge: gravação (SWD) e console (UART)</text>
+  <text x="600" y="70" text-anchor="middle" font-size="15" fill="#5b6a64">STM32L071CZT6 + SX1272 · pinos vistos de cima, antena SMA para cima</text>
+
+  <!-- ===================== módulo ===================== -->
+  <g transform="translate(430,150)">
+    <rect x="0" y="0" width="300" height="470" rx="12" fill="#1f3f8f" stroke="#0e2a6b" stroke-width="3"/>
+    <rect x="95" y="-58" width="70" height="70" rx="6" fill="#d6b25e" stroke="#9c7b2f" stroke-width="2"/>
+    <text x="130" y="-14" text-anchor="middle" font-size="13" fill="#3d2f0c">SMA</text>
+    <rect x="95" y="150" width="110" height="110" rx="6" fill="#2b2b2b"/>
+    <text x="150" y="200" text-anchor="middle" font-size="13" fill="#e6e6e6">STM32</text>
+    <text x="150" y="218" text-anchor="middle" font-size="13" fill="#e6e6e6">L071CZ</text>
+    <rect x="110" y="70" width="80" height="60" rx="4" fill="#2b2b2b"/>
+    <text x="150" y="105" text-anchor="middle" font-size="13" fill="#e6e6e6">SX1272</text>
+    <text x="150" y="300" text-anchor="middle" font-size="14" fill="#ffffff" font-weight="700">RADIOENGE</text>
+    <text x="150" y="318" text-anchor="middle" font-size="12" fill="#c9d6ff">LoRaWAN EndDevice</text>
+
+    <!-- LEDs -->
+    <circle cx="70" cy="360" r="8" fill="#e04848"/><text x="70" y="388" text-anchor="middle" font-size="11" fill="#ffffff">PB5</text>
+    <circle cx="105" cy="360" r="8" fill="#3fbf55"/><text x="105" y="388" text-anchor="middle" font-size="11" fill="#ffffff">PB8</text>
+    <circle cx="140" cy="360" r="8" fill="#f2c230"/><text x="140" y="388" text-anchor="middle" font-size="11" fill="#ffffff">PB9</text>
+
+    <!-- pinos da direita (numeração do manual, de baixo para cima: 1..8) -->
+    <g font-size="14" fill="#ffffff">
+      <circle cx="300" cy="60"  r="9" fill="#e9c46a" stroke="#8a6d1d"/><text x="282" y="65"  text-anchor="end">8 GND</text>
+      <circle cx="300" cy="110" r="9" fill="#e9c46a" stroke="#8a6d1d"/><text x="282" y="115" text-anchor="end">7 GPIO1 PA2</text>
+      <circle cx="300" cy="160" r="9" fill="#e9c46a" stroke="#8a6d1d"/><text x="282" y="165" text-anchor="end">6 GPIO0 PA3</text>
+      <circle cx="300" cy="210" r="9" fill="#e9c46a" stroke="#8a6d1d"/><text x="282" y="215" text-anchor="end">5 VCC</text>
+      <circle cx="300" cy="260" r="9" fill="#e9c46a" stroke="#8a6d1d"/><text x="282" y="265" text-anchor="end">4 VCC</text>
+      <circle cx="300" cy="310" r="9" fill="#e9c46a" stroke="#8a6d1d"/><text x="282" y="315" text-anchor="end">3 TX PB6</text>
+      <circle cx="300" cy="360" r="9" fill="#e9c46a" stroke="#8a6d1d"/><text x="282" y="365" text-anchor="end">2 RX PB7</text>
+      <circle cx="300" cy="410" r="9" fill="#e9c46a" stroke="#8a6d1d"/><text x="282" y="415" text-anchor="end">1 GND</text>
+    </g>
+
+    <!-- pads de SWD na borda de baixo -->
+    <g font-size="13" fill="#ffffff">
+      <circle cx="60"  cy="470" r="9" fill="#e9c46a" stroke="#8a6d1d"/>
+      <circle cx="120" cy="470" r="9" fill="#e9c46a" stroke="#8a6d1d"/>
+      <circle cx="180" cy="470" r="9" fill="#e9c46a" stroke="#8a6d1d"/>
+      <circle cx="240" cy="470" r="9" fill="#e9c46a" stroke="#8a6d1d"/>
+      <text x="60"  y="452" text-anchor="middle">SWDIO</text>
+      <text x="120" y="452" text-anchor="middle">GND</text>
+      <text x="180" y="452" text-anchor="middle">SWCLK</text>
+      <text x="240" y="452" text-anchor="middle">RESET</text>
+    </g>
+  </g>
+
+  <!-- ===================== ST-LINK ===================== -->
+  <g transform="translate(60,690)">
+    <rect x="0" y="0" width="560" height="130" rx="12" fill="#f4f7f6" stroke="#0b7a5f" stroke-width="3"/>
+    <text x="20" y="80" font-size="20" font-weight="700" fill="#0b7a5f">ST-LINK V2 (gravação pelo SWD)</text>
+    <g font-size="15" fill="#14211d">
+      <rect x="20"  y="15" width="120" height="34" rx="6" fill="#ffffff" stroke="#8aa69b"/><text x="80"  y="38" text-anchor="middle">SWDIO</text>
+      <rect x="150" y="15" width="120" height="34" rx="6" fill="#ffffff" stroke="#8aa69b"/><text x="210" y="38" text-anchor="middle">GND</text>
+      <rect x="280" y="15" width="120" height="34" rx="6" fill="#ffffff" stroke="#8aa69b"/><text x="340" y="38" text-anchor="middle">SWCLK</text>
+      <rect x="410" y="15" width="130" height="34" rx="6" fill="#ffffff" stroke="#8aa69b"/><text x="475" y="38" text-anchor="middle">RST (opcional)</text>
+    </g>
+    <text x="20" y="102" font-size="12" fill="#5b6a64">RST opcional com o OpenOCD do build.sh (clones V2: RST costuma não funcionar).</text><text x="20" y="119" font-size="12" fill="#5b6a64">Se não conectar: segure RESET no GND e solte em "&gt;&gt;&gt; Conectando".</text>
+  </g>
+  <!-- fios SWD -->
+  <g fill="none" stroke-width="4" stroke-linecap="round">
+    <path d="M490 629 L490 650 L140 650 L140 705" stroke="#2f6fd0"/>
+    <path d="M550 629 L550 662 L270 662 L270 705" stroke="#222222"/>
+    <path d="M610 629 L610 674 L400 674 L400 705" stroke="#c27803"/>
+    <path d="M670 629 L670 686 L535 686 L535 705" stroke="#8e44ad"/>
+  </g>
+
+  <!-- ===================== USB-serial ===================== -->
+  <g transform="translate(860,380)">
+    <rect x="0" y="0" width="300" height="190" rx="12" fill="#f4f7f6" stroke="#0b7a5f" stroke-width="3"/>
+    <text x="20" y="32" font-size="20" font-weight="700" fill="#0b7a5f">USB-serial 3,3 V</text>
+    <text x="20" y="54" font-size="13" fill="#5b6a64">console 115200 8N1</text>
+    <g font-size="15" fill="#14211d">
+      <rect x="20" y="70"  width="130" height="32" rx="6" fill="#ffffff" stroke="#8aa69b"/><text x="85" y="92"  text-anchor="middle">RX · branco</text>
+      <rect x="20" y="110" width="130" height="32" rx="6" fill="#ffffff" stroke="#8aa69b"/><text x="85" y="132" text-anchor="middle">TX · verde</text>
+      <rect x="20" y="150" width="130" height="32" rx="6" fill="#ffffff" stroke="#8aa69b"/><text x="85" y="172" text-anchor="middle">GND · preto</text>
+    </g>
+  </g>
+  <g fill="none" stroke-width="4" stroke-linecap="round">
+    <path d="M739 460 L820 460 L820 466 L880 466" stroke="#7d858c" stroke-width="7"/><path d="M739 460 L820 460 L820 466 L880 466" stroke="#f7f7f7" stroke-width="4"/>
+    <path d="M739 510 L800 510 L800 506 L880 506" stroke="#2e9e45"/>
+    <path d="M739 560 L830 560 L830 546 L880 546" stroke="#222222"/>
+  </g>
+  <g font-size="13" fill="#14211d">
+    <text x="752" y="450">TX → RX</text>
+    <text x="752" y="530">RX ← TX</text>
+  </g>
+
+  <!-- ===================== alimentação ===================== -->
+  <g transform="translate(860,150)">
+    <rect x="0" y="0" width="300" height="150" rx="12" fill="#fff7e6" stroke="#c27803" stroke-width="3"/>
+    <text x="20" y="32" font-size="20" font-weight="700" fill="#8a5300">Alimentação</text>
+    <text x="20" y="60" font-size="14" fill="#14211d">VCC (pinos 4 e 5): 4–12 V</text>
+    <text x="20" y="82" font-size="14" fill="#14211d">(com o regulador de fábrica)</text>
+    <text x="20" y="108" font-size="14" fill="#14211d">3,3 V só com o regulador</text>
+    <text x="20" y="128" font-size="14" fill="#14211d">trocado pelo resistor de 0 Ω</text>
+  </g>
+  <g fill="none" stroke-width="4" stroke-linecap="round">
+    <path d="M739 360 L800 360 L800 220 L860 220" stroke="#c0362c"/>
+    <path d="M739 410 L785 410 L785 250 L860 250" stroke="#c0362c"/>
+  </g>
+
+  <text x="60" y="180" font-size="15" fill="#14211d" font-weight="700">GND comum entre tudo.</text>
+  <text x="60" y="204" font-size="14" fill="#5b6a64">Antena sempre ligada antes de transmitir.</text>
+  <text x="60" y="228" font-size="14" fill="#5b6a64">Console alternativo (CONSOLE_UART=2):</text>
+  <text x="60" y="248" font-size="14" fill="#5b6a64">GPIO1 = TX (PA2), GPIO0 = RX (PA3).</text>
+</svg>
